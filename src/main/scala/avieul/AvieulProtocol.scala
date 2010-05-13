@@ -23,4 +23,6 @@ object AvieulProtocol {
   val ServicePublish = <<( fix_byte(0x22), byte, short, list_to_end(byte)).drop1
   val ServiceSubscriptionUnknown = <<( fix_byte(0x2F), byte, short ).drop1
   val ServiceUnknown = <<( fix_byte(0x0F), byte ).drop1
+
 }
+

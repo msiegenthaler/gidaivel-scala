@@ -7,17 +7,21 @@ import ch.inventsoft.scalabase.oip._
 import ch.inventsoft.scalabase.extcol.ListUtil._
 import ch.inventsoft.gidaivel.avieul._
 import AvieulProtocol._
+import ch.inventsoft.scalabase.time._
 
 
 /**
  * Gateway to avieuls over a locally attached xbee-device.
  */
-trait PassadiDAvieulsXBee extends PassadiDAvieuls with StateServer[PDAXState] {
-  protected[this] val xbee: LocalXBee
+class PassadiDAvieulsXBee(protected[this] val xbee: LocalXBee) extends PassadiDAvieuls with StateServer[PDAXState] {
   private type State = PDAXState
   protected[this] override def initialState = {
     xbee.incomingMessageProcessor(Some(process))
+    discoverAvieuls
     PDAXState(Map(), Nil)
+  }
+  protected[this] def discoverAvieuls = {
+    xbee.broadcastPacket(RequestInfo())
   }
   protected[this] override def messageHandler(state: State) = {
     case XBeeDataPacket(`xbee`, from, _, _, AnnounceService(services, _)) =>
@@ -60,10 +64,8 @@ trait PassadiDAvieulsXBee extends PassadiDAvieuls with StateServer[PDAXState] {
     None
   }
 
-  override def findAvieuls = call_? { (state,reply) =>
-    reply(null)
-    Some(state)
-  }
+  override def findAvieuls = get(_.avieuls.values.toList)
+  override def findServices = get(_.avieuls.values.flatMap(_.services).toList)
 
   private[xbee] def sendCall(toXBee: XBeeAddress, serviceIndex: Byte)(callType: Short, payload: Seq[Byte]): MessageSelector[Either[Unit,AvieulError]] = call_? { (state,reply) =>
     val packet = ServiceCall(serviceIndex, callType, payload)
@@ -161,4 +163,8 @@ object HandlerState {
     state
   }
 }
-
+object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieulsXBee] {
+  def apply(xbee: LocalXBee, as: SpawnStrategy) = {
+    start(as)(new PassadiDAvieulsXBee(xbee))
+  }
+}
