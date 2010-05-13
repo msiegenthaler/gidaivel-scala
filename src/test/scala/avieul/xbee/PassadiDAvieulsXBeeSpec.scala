@@ -54,6 +54,28 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       }
       stop(xbee, passadi)
     }
+    it_("should discover three services from two xbees") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      val avieul2 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((40, 1.toByte) :: (41, 1.toByte) :: Nil))
+      avieul2.addHandler(requestInfo((55, 3.toByte) :: Nil))
+      sleep(500 ms)
+
+      val services = receiveWithin(1 s)(passadi.findServices)
+      services.size should be(3)
+      services.filter(_.serviceType == 40).size should be(1)
+      services.filter(_.serviceType == 41).size should be(1)
+      services.filter(_.serviceType == 55).size should be(1)
+
+      val avieuls = receiveWithin(1 s)(passadi.findAvieuls)
+      avieuls.size should be(2)
+      avieuls.foreach( a => a.services.size should be >= (1) )
+      val s2 = avieuls.flatMap(_.services)
+      s2.size should be(3)
+
+      stop(xbee, passadi)
+    }
   }
 
   def requestInfo(services: List[(Int,Byte)]): PartialFunction[Seq[Byte],MockAvieul=>Unit] = {
