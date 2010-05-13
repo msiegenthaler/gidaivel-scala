@@ -9,6 +9,8 @@ import ch.inventsoft.scalabase.time._
 import ch.inventsoft.xbee._
 import ch.inventsoft.gidaivel.avieul._
 import AvieulProtocol._
+import scala.concurrent.SyncVar
+
 
 class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 
@@ -76,6 +78,49 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 
       stop(xbee, passadi)
     }
+
+    it_("should support calling a service") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      val service = receiveWithin(1 s)(passadi.findServices).head
+
+      val x = new SyncVar[Seq[Byte]]
+      avieul1.addHandler {
+	case ServiceCall((0, 13, data), Nil) =>
+	  avieul => x.set(data)
+      }
+      val data = 1 :: 2 :: 3 :: Nil map(_.toByte)
+      service.call(13, data)
+      x.get(1000) should be(Some(data))
+
+      stop(xbee, passadi)
+    }
+    it_("should support requesting a service") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+      
+      val service = receiveWithin(1 s)(passadi.findServices).head
+
+      avieul1.addHandler {
+	case ServiceRequest((0, 12, data), Nil) => avieul => {
+	  val res = data.foldLeft(0)(_ + _) :: Nil map(_.toByte)
+	  avieul.outgoingMessage(ServiceResponse(0, 12, res))
+	}
+      }
+      val data = 1 :: 2 :: Nil map(_.toByte)
+      val res = receiveWithin(1 s)(service.request(12, data))
+      res match {
+	case Left(response) =>
+	  response should be(3 :: Nil map(_.toByte))
+	case Right(_) => fail
+      }
+      stop(xbee, passadi)
+    }
   }
 
   def requestInfo(services: List[(Int,Byte)]): PartialFunction[Seq[Byte],MockAvieul=>Unit] = {
@@ -136,6 +181,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
   def init = {
     val xbee = LocalXBeeMock()
     val passadi = PassadiDAvieulsXBee(xbee, SpawnAsRequiredChild)
+    sleep(100 ms)
     (passadi, xbee)
   }
   def stop(xbee: LocalXBee, passadi: PassadiDAvieulsXBee) = {
