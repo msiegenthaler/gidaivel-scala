@@ -108,6 +108,7 @@ trait PassadiDAvieulsXBee extends PassadiDAvieuls with StateServer[PDAXState] {
     Some(state)
   }
 
+
   private[xbee] def makeAvieul(xbeeAddress: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)]) = {
     new XBeeAvieul {
       override val services = serviceDefs.map { s =>

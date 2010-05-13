@@ -11,7 +11,7 @@ trait Avieul {
   /**
    * Query for the services of the avieul.
    */
-  def queryServices: MessageSelector[List[AvieulService]]
+  val services: List[AvieulService]
 }
 
 /**
@@ -20,8 +20,21 @@ trait Avieul {
 trait AvieulService {
   val serviceType: Int
   val version: ServiceVersion
-}
+  def providedBy: Avieul
 
+  def call(callType: Short, payload: Seq[Byte]): MessageSelector[Either[Unit,AvieulError]]
+  def request(requestType: Short, payload: Seq[Byte]): MessageSelector[Either[Seq[Byte],AvieulError]]
+  def subscribe(subscriptionType: Short, payload: Seq[Byte], handler: (Seq[Byte]) => Unit @processCps): MessageSelector[Either[() => MessageSelector[Unit],AvieulError]]
+}
+sealed trait AvieulError
+object TransmitFailed extends AvieulError
+object UnknownAvieulService extends AvieulError
+object UnknownAvieulServiceRequest extends AvieulError
+
+
+/**
+ * Version of an avieul service.
+ */
 class ServiceVersion private(protected val number: Int) extends Ordered[ServiceVersion] {
   override def compare(other: ServiceVersion) = number.compare(other.number)
   override def toString = number.toString

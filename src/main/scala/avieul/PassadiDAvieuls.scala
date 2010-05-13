@@ -12,4 +12,9 @@ trait PassadiDAvieuls {
    * Find all available avieuls.
    */
   def findAvieuls: MessageSelector[List[Avieul]]
+
+  /**
+   * Find all services.
+   */
+  def findServices: MessageSelector[List[AvieulService]]
 }
