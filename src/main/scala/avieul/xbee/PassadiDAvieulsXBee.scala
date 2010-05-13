@@ -20,43 +20,39 @@ trait PassadiDAvieulsXBee extends PassadiDAvieuls with StateServer[PDAXState] {
     PDAXState(Map(), Nil)
   }
   protected[this] override def messageHandler(state: State) = {
-    case XBeeDataPacket(`xbee`, from, _, _, data) => data match {
-      case AnnounceService(services, _) =>
-	val avieul = makeAvieul(from, services)
-	state.avieuls.get(from) match {
-	  case Some(existing) =>
-	    // already exists
-	    // TODO check the services!
-	    Some(state)
-	  case None => 
-	    //new avieul
-	    val newState = state.withAvieuls(state.avieuls + ((from, avieul)))
-	    Some(newState)
-	}
+    case XBeeDataPacket(`xbee`, from, _, _, AnnounceService(services, _)) =>
+      val avieul = makeAvieul(from, services)
+      state.avieuls.get(from) match {
+	case Some(existing) =>
+	  // already exists
+	  // TODO check the services as they might have changed
+	  Some(state)
+	case None => 
+	  //new avieul
+	  val newState = state.withAvieuls(state.avieuls + ((from, avieul)))
+	Some(newState)
+      }
       
-      case RequestInfo((), _) =>
-	//no services offered
-	xbee.sendPacket(from, AnnounceService(Nil))
+    case XBeeDataPacket(`xbee`, from, _, _, RequestInfo((), _)) =>
+      //no services offered
+      xbee.sendPacket(from, AnnounceService(Nil))
+      Some(state)
+    case XBeeDataPacket(`xbee`, from, _, _, ServiceCall(_, _)) =>
+      log.info("PassadiDAvieuls doesn't offer services. Ignoring ServiceCall")
+      Some(state)
+    case XBeeDataPacket(`xbee`, from, _, _, ServiceRequest(_, _)) =>
+      log.info("PassadiDAvieuls doesn't offer services. Ignoring ServiceRequest")
+      Some(state)
+    case XBeeDataPacket(`xbee`, from, _, _, ServiceSubscribe(_, _)) =>
+      log.info("PassadiDAvieuls doesn't offer services. Ignoring ServiceSubscribe")
+      Some(state)
+
+    case otherMsg =>
+      val newState = state.handle(otherMsg)
+      if (newState.isEmpty) {
+	log.info("Ignoring message {}", otherMsg)
 	Some(state)
-      case ServiceCall((_, _, _), _) => 
-	log.info("PassadiDAvieuls doesn't offer services. Ignoring ServiceCall")
-	Some(state)
-      case ServiceRequest((_, _, _), _) =>
-	log.info("PassadiDAvieuls doesn't offer services. Ignoring ServiceRequest")
-	Some(state)
-      case ServiceSubscribe((_, _, _), _) =>
-	log.info("PassadiDAvieuls doesn't offer services. Ignoring ServiceSubscribe")
-	Some(state)
-/*
-      case ServiceResponse((serviceIndex, requestType, data), _) =>
-	state.avieuls.get(from).map(_.serviceForIndex(serviceIndex)) match {
-	  case Some(service) => //TODO
-	    Some(state)
-	  case None => //TODO
-	    Some(state)
-	}
-	*/
-    }
+      } else newState
   }
 
   def close = cast_ { state =>
@@ -108,6 +104,7 @@ trait PassadiDAvieulsXBee extends PassadiDAvieuls with StateServer[PDAXState] {
     Some(state)
   }
 
+
   private[xbee] def makeAvieul(xbeeAddress: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)]) = {
     new XBeeAvieul {
       override val services = serviceDefs.map { s =>
@@ -130,7 +127,7 @@ trait PassadiDAvieulsXBee extends PassadiDAvieuls with StateServer[PDAXState] {
     override def subscribe(subscriptionType: Short, payload: Seq[Byte], handler: Seq[Byte] => Unit @processCps) = sendSubscribe(providedBy.address,index)(subscriptionType, payload, handler)
   }
 }
-private[xbee] case class PDAXState(avieuls: Map[XBeeAddress,Avieul], protected[this] val handlers: List[PartialFunction[Any,Function1[PDAXState,PDAXState @processCps]]]) extends HandlerState[Seq[Byte]] {
+private[xbee] case class PDAXState(avieuls: Map[XBeeAddress,Avieul], protected[this] val handlers: List[PartialFunction[Any,Function1[PDAXState,PDAXState @processCps]]]) extends HandlerState[Any] {
   override type State = PDAXState
   def withAvieuls(avieuls: Map[XBeeAddress,Avieul]) = PDAXState(avieuls, handlers)
   protected[this] def withHandlers(handlers: List[Handler]) = PDAXState(avieuls, handlers)
@@ -144,14 +141,14 @@ trait HandlerState[M] {
   def addHandler(handler: Handler): State = {
     withHandlers(handler :: handlers)
   }
-  def handle(msg: M): State @processCps = {
+  def handle(msg: M) = {
     removeLast(handlers, (h: Handler) => h.isDefinedAt(msg)) match {
       case Some((handler, rest)) =>
 	val state = withHandlers(rest)
 	val hfun = handler(msg)
-	hfun(state)
+	Some(hfun(state))
       case None =>
-	withHandlers(handlers)
+	None
     }
   }
 
@@ -163,11 +160,5 @@ object HandlerState {
     body
     state
   }
-}
-
-private[xbee] class ServiceContext {
-  def handleResponse(requestType: Short, payload: Seq[Byte]) = {
-  }
-  
 }
 
