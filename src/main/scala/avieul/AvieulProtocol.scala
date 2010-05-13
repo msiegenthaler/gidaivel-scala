@@ -11,8 +11,8 @@ object AvieulProtocol {
   val GenericAvieulMessage = <<( byte, list_to_end(byte) )>>
   
   val RequestInfo = <<( fix_byte(0x01) )
+  val ServiceInfo = <<( byte, integer, byte )>>
   val AnnounceService = <<( fix_byte(0x02), list_to_end(ServiceInfo)).drop1
-  val ServiceInfo = <<( byte, integer, byte )
   
   val ServiceCall = <<( fix_byte(0x10), byte, short, list_to_end(byte)).drop1
   val ServiceRequest = <<( fix_byte(0x11), byte, short, list_to_end(byte)).drop1

@@ -19,9 +19,9 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       val avieul2 = addAvieul(xbee)
       avieul1.addHandler(requestInfo(Nil))
       avieul2.addHandler(requestInfo(Nil))
-      sleep(200 ms)
+      sleep(500 ms)
 
-      val avieuls = receiveWithin(500 ms) { passadi.findAvieuls }
+      val avieuls = receiveWithin(1000 ms) { passadi.findAvieuls }
       avieuls match {
 	case a1 :: a2 :: Nil =>
 	  a1 should not be(null)
@@ -32,8 +32,9 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     }
     it_("should discover no avieuls if there are none") {
       val (passadi,xbee) = init
-      
-      val avieuls = receiveWithin(500 ms) { passadi.findAvieuls }
+      sleep(500 ms)
+
+      val avieuls = receiveWithin(1000 ms) { passadi.findAvieuls }
       avieuls should be(Nil)
       
       stop(xbee, passadi)
@@ -42,9 +43,9 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       val (passadi,xbee) = init
       val avieul1 = addAvieul(xbee)
       avieul1.addHandler(requestInfo((31, 1.toByte) :: Nil))
-      sleep(200 ms)
+      sleep(500 ms)
 
-      val services = receiveWithin(500 ms) { passadi.findServices }
+      val services = receiveWithin(1000 ms) { passadi.findServices }
       services match {
 	case s1 :: Nil =>
 	  s1 should not be(null)
@@ -59,9 +60,8 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     case RequestInfo((), Nil) => avieul => {
       val counter = new java.util.concurrent.atomic.AtomicInteger(-1)
       val serviceData = services.map(t => (counter.incrementAndGet.toByte, t._1, t._2))
-      //println("#### "+serviceData)
-      avieul.outgoingMessage(AnnounceService((1.toByte,31,1.toByte) :: Nil))
-      //avieul.outgoingMessage(AnnounceService(serviceData))
+      val bytes = AnnounceService(serviceData)
+      avieul.outgoingMessage(bytes)
     }
   }
 
