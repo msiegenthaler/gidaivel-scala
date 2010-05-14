@@ -203,7 +203,139 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       stop(xbee, passadi)
     }
 
-    it_("should return TransmitFailed on subscribung a service from an unavailable xbee") {
+    it_("should support subscribing to a service") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      val service = receiveWithin(1 s)(passadi.findServices).head
+
+      avieul1.addHandler {
+	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	  avieul.outgoingMessage(ServiceSubscriptionConfirm(0, 12))
+	}
+      }
+      val data = 1 :: 2 :: Nil map(_.toByte)
+      val counter = new java.util.concurrent.atomic.AtomicInteger
+      def publishFun(data: Seq[Byte]): Unit @processCps = {
+	counter.addAndGet(data.head)
+	noop
+      }
+      val res = receiveWithin(1 s)(service.subscribe(12, data, publishFun))
+      val unsubscribe = res match {
+	case Left(f) => f
+	case Right(_) => fail
+      }
+
+      counter.get should be(0)
+
+      avieul1.outgoingMessage(ServicePublish(0, 12, 1 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter.get should be(1)
+
+      avieul1.outgoingMessage(ServicePublish(0, 12, 2 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter.get should be(3)
+
+      stop(xbee, passadi)
+    }
+    it_("publish from an unsubscribed service should not be received") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      val service = receiveWithin(1 s)(passadi.findServices).head
+
+      avieul1.addHandler {
+	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	  avieul.outgoingMessage(ServiceSubscriptionConfirm(0, 12))
+	}
+      }
+      avieul1.addHandler {
+	case ServiceUnsubscribe((0, 12), Nil) => avieul => {
+	  ()
+	}
+      }
+      val data = 1 :: 2 :: Nil map(_.toByte)
+      val counter = new java.util.concurrent.atomic.AtomicInteger
+      def publishFun(data: Seq[Byte]): Unit @processCps = {
+	counter.addAndGet(data.head)
+	noop
+      }
+      val res = receiveWithin(1 s)(service.subscribe(12, data, publishFun))
+      val unsubscribe = res match {
+	case Left(f) => f
+	case Right(_) => fail
+      }
+
+      counter.get should be(0)
+
+      avieul1.outgoingMessage(ServicePublish(0, 12, 1 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter.get should be(1)
+
+      unsubscribe()
+      sleep(200 ms)
+      
+      avieul1.outgoingMessage(ServicePublish(0, 12, 2 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter.get should be(1)
+
+      stop(xbee, passadi)
+    }
+    it_("should support subscribing to a service twice") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      val service = receiveWithin(1 s)(passadi.findServices).head
+
+      avieul1.addHandler {
+	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	  avieul.outgoingMessage(ServiceSubscriptionConfirm(0, 12))
+	}
+      }
+      val data = 1 :: 2 :: Nil map(_.toByte)
+      val counter1 = new java.util.concurrent.atomic.AtomicInteger
+      def publishFun1(data: Seq[Byte]): Unit @processCps = {
+	counter1.addAndGet(data.head)
+	noop
+      }
+      val res1 = receiveWithin(1 s)(service.subscribe(12, data, publishFun1))
+      val unsubscribe1 = res1 match {
+	case Left(f) => f
+	case Right(_) => fail
+      }
+      val counter2 = new java.util.concurrent.atomic.AtomicInteger
+      def publishFun2(data: Seq[Byte]): Unit @processCps = {
+	counter2.addAndGet(data.head)
+	noop
+      }
+      val res2 = receiveWithin(1 s)(service.subscribe(12, data, publishFun2))
+      val unsubscribe2 = res2 match {
+	case Left(f) => f
+	case Right(_) => fail
+      }
+
+      counter1.get should be(0)
+      counter2.get should be(0)
+
+      avieul1.outgoingMessage(ServicePublish(0, 12, 1 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter1.get should be(1)
+      counter2.get should be(1)
+
+      avieul1.outgoingMessage(ServicePublish(0, 12, 2 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter1.get should be(3)
+      counter2.get should be(3)
+
+      stop(xbee, passadi)
+    }
+    it_("should return TransmitFailed on subscribing a service from an unavailable xbee") {
       val (passadi,xbee) = init
       val avieul1 = addAvieul(xbee)
       avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
