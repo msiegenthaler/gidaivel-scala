@@ -30,6 +30,7 @@ sealed trait AvieulError
 object TransmitFailed extends AvieulError
 object UnknownAvieulService extends AvieulError
 object UnknownAvieulServiceRequest extends AvieulError
+object UnknownAvieulServiceSubscription extends AvieulError
 
 
 /**
