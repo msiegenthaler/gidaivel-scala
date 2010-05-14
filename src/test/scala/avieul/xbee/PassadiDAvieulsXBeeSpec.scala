@@ -103,7 +103,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       val avieul1 = addAvieul(xbee)
       avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
       sleep(500 ms)
-      
+
       val service = receiveWithin(1 s)(passadi.findServices).head
 
       avieul1.addHandler {
@@ -121,6 +121,68 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       }
       stop(xbee, passadi)
     }
+    it_("should return TransmitFailed on requesting a service from an unavailable xbee") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      val service = receiveWithin(1 s)(passadi.findServices).head
+      val data = 1 :: 2 :: Nil map(_.toByte)
+
+      xbee.remove(avieul1)
+
+      val res = receiveWithin(1 s)(service.request(12, data))
+      res match {
+	case Right(r) =>
+	  r should be(TransmitFailed)
+	case Left(_) => fail
+      }
+      stop(xbee, passadi)
+    }
+    it_("should return UnknownAvieulService on requesting an unknown service") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      avieul1.addHandler {
+	case ServiceRequest((0, 12, data), Nil) => avieul => {
+	  avieul.outgoingMessage(ServiceUnknown(0))
+	}
+      }
+      val service = receiveWithin(1 s)(passadi.findServices).head
+      val data = 1 :: 2 :: Nil map(_.toByte)
+      val res = receiveWithin(1 s)(service.request(12, data))
+      res match {
+	case Right(r) =>
+	  r should be(UnknownAvieulService)
+	case Left(_) => fail
+      }
+      stop(xbee, passadi)
+    }
+    it_("should return UnknownAvieulServiceRequest sending an unsupported request to a service") {
+      val (passadi,xbee) = init
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      avieul1.addHandler {
+	case ServiceRequest((0, 12, data), Nil) => avieul => {
+	  avieul.outgoingMessage(ServiceRequestUnknown(0, 12))
+	}
+      }
+      val service = receiveWithin(1 s)(passadi.findServices).head
+      val data = 1 :: 2 :: Nil map(_.toByte)
+      val res = receiveWithin(1 s)(service.request(12, data))
+      res match {
+	case Right(r) =>
+	  r should be(UnknownAvieulServiceRequest)
+	case Left(_) => fail
+      }
+      stop(xbee, passadi)
+    }
+
   }
 
   def requestInfo(services: List[(Int,Byte)]): PartialFunction[Seq[Byte],MockAvieul=>Unit] = {
@@ -202,6 +264,9 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       remote.setProcessor(Some(self))
       remote.incomingMessage(RequestInfo())
       state.withRemotes(remote :: state.remotes)
+    }
+    def remove(remote: RemoteXBee) = cast { state =>
+      state.withRemotes(state.remotes.filterNot(_ == remote))
     }
     protected[this] override def initialState = LocalXBeeMockState(Nil, None)
     protected[this] override def messageHandler(state: LocalXBeeMockState) = {

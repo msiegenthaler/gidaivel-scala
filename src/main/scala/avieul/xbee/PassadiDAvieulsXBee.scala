@@ -69,36 +69,45 @@ class PassadiDAvieulsXBee(protected[this] val xbee: LocalXBee) extends PassadiDA
 
   private[xbee] def sendCall(toXBee: XBeeAddress, serviceIndex: Byte)(callType: Short, payload: Seq[Byte]): MessageSelector[Either[Unit,AvieulError]] = call_? { (state,reply) =>
     val packet = ServiceCall(serviceIndex, callType, payload)
-    def successHandler(state: State): State = {
-      reply(Left(()))
+    val selector = xbee.sendTrackedPacket(toXBee, packet)
+    val handler = (state: State) => selector { tx =>
+      noop
+      if (tx.isSuccess) {
+	reply(Left())
+      } else {
+	reply(Right(TransmitFailed))
+      }
       state
     }
-    def failHandler(state: State): State = {
-      reply(Right(TransmitFailed))
-      state
-    }
-    val handler = xbee.sendTrackedPacket(toXBee, packet)(tx => if (tx.isSuccess) successHandler _ else failHandler _)
-    Some(state.addHandler(handler.asInstanceOf[state.Handler]))
+    Some(state.addHandler(handler))
   }
 
   private[xbee] def sendRequest(toXBee: XBeeAddress, serviceIndex: Byte)(requestType: Short, payload: Seq[Byte]): MessageSelector[Either[Seq[Byte],AvieulError]] = call_? { (state,reply) =>
-    def successHandler(state: State): State = {
-      state.addHandler {
-	case XBeeDataPacket(`xbee`, `toXBee`, _, _, ServiceResponse((`serviceIndex`, `requestType`, responseData), _)) =>
-	  HandlerState.stateless(reply(Left(responseData)))
-	case XBeeDataPacket(`xbee`, `toXBee`, _, _, ServiceRequestUnknown((`serviceIndex`, `requestType`), _)) =>
-	  HandlerState.stateless(reply(Right(UnknownAvieulServiceRequest)))
-	case XBeeDataPacket(`xbee`, `toXBee`, _, _, ServiceUnknown(`serviceIndex`, _)) =>
-	  HandlerState.stateless(reply(Right(UnknownAvieulService)))
+    val packet = ServiceRequest(serviceIndex, requestType, payload)
+    val selector = xbee.sendTrackedPacket(toXBee, packet)
+    val handler = (state: State) => selector { tx =>
+      if (tx.isSuccess) {
+	state.addHandler { state => {
+	  case XBeeDataPacket(`xbee`, `toXBee`, _, _, ServiceResponse((`serviceIndex`, `requestType`, responseData), _)) =>
+	    reply(Left(responseData))
+	    noop
+	    state
+	  case XBeeDataPacket(`xbee`, `toXBee`, _, _, ServiceRequestUnknown((`serviceIndex`, `requestType`), _)) =>
+	    reply(Right(UnknownAvieulServiceRequest))
+	    noop
+	    state
+	  case XBeeDataPacket(`xbee`, `toXBee`, _, _, ServiceUnknown(`serviceIndex`, _)) =>
+	    reply(Right(UnknownAvieulService))
+	    noop
+	    state
+	}}
+      } else {
+	reply(Right(TransmitFailed))
+	noop
+	state
       }
     }
-    def failHandler(state: State): State = {
-      reply(Right(TransmitFailed))
-      state
-    }
-    val packet = ServiceRequest(serviceIndex, requestType, payload)
-    val handler = xbee.sendTrackedPacket(toXBee, packet)(tx => if (tx.isSuccess) successHandler _ else failHandler _)
-    Some(state.addHandler(handler.asInstanceOf[state.Handler]))
+    Some(state.addHandler(handler))
   }
 
   private[xbee] def sendSubscribe(toXBee: XBeeAddress, serviceIndex: Byte)(subscriptionType: Short, payload: Seq[Byte], handler: (Seq[Byte]) => Unit @processCps): MessageSelector[Either[() => MessageSelector[Unit],AvieulError]] = call_? { (state,reply) =>
@@ -129,7 +138,7 @@ class PassadiDAvieulsXBee(protected[this] val xbee: LocalXBee) extends PassadiDA
     override def subscribe(subscriptionType: Short, payload: Seq[Byte], handler: Seq[Byte] => Unit @processCps) = sendSubscribe(providedBy.address,index)(subscriptionType, payload, handler)
   }
 }
-private[xbee] case class PDAXState(avieuls: Map[XBeeAddress,Avieul], protected[this] val handlers: List[PartialFunction[Any,Function1[PDAXState,PDAXState @processCps]]]) extends HandlerState[Any] {
+private[xbee] case class PDAXState(avieuls: Map[XBeeAddress,Avieul], protected[this] val handlers: List[Function1[PDAXState,PartialFunction[Any,PDAXState @processCps]]]) extends HandlerState[Any] {
   override type State = PDAXState
   def withAvieuls(avieuls: Map[XBeeAddress,Avieul]) = PDAXState(avieuls, handlers)
   protected[this] def withHandlers(handlers: List[Handler]) = PDAXState(avieuls, handlers)
@@ -138,24 +147,24 @@ private[xbee] case class PDAXState(avieuls: Map[XBeeAddress,Avieul], protected[t
 
 trait HandlerState[M] {
   type State <: HandlerState[M]
-  type Handler = PartialFunction[Any,Function1[State,State @processCps]]
+  type Handler = Function1[State,PartialFunction[Any,State @processCps]]
 
   def addHandler(handler: Handler): State = {
     withHandlers(handler :: handlers)
   }
   def handle(msg: M) = {
-    removeLast(handlers, (h: Handler) => h.isDefinedAt(msg)) match {
-      case Some((handler, rest)) =>
-	val state = withHandlers(rest)
-	val hfun = handler(msg)
-	Some(hfun(state))
+    handlers.view.map(_.apply(unchanged)).find(_.isDefinedAt(msg)) match {
+      case Some(handler) =>
+	val newState = handler(msg)
+	Some(newState.withHandlers(newState.handlers.filterNot(_ == handler)))
       case None =>
 	None
     }
   }
 
-  protected[this] val handlers: List[Handler]
-  protected[this] def withHandlers(handlers: List[Handler]): State
+  protected val handlers: List[Handler]
+  protected[this] def unchanged: State = this.asInstanceOf[State]
+  protected def withHandlers(handlers: List[Handler]): State
 }
 object HandlerState {
   def stateless[State,A](body : => A @processCps): State => State @processCps = { state =>
