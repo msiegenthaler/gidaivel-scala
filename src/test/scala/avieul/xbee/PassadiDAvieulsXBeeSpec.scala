@@ -212,7 +212,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       val service = receiveWithin(1 s)(passadi.findServices).head
 
       avieul1.addHandler {
-	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	case ServiceSubscribe((0, 12), Nil) => avieul => {
 	  avieul.outgoingMessage(ServiceSubscriptionConfirm(0, 12))
 	}
       }
@@ -222,7 +222,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 	counter.addAndGet(data.head)
 	noop
       }
-      val res = receiveWithin(1 s)(service.subscribe(12, data, publishFun))
+      val res = receiveWithin(1 s)(service.subscribe(12, publishFun))
       val unsubscribe = res match {
 	case Left(f) => f
 	case Right(_) => fail
@@ -249,7 +249,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       val service = receiveWithin(1 s)(passadi.findServices).head
 
       avieul1.addHandler {
-	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	case ServiceSubscribe((0, 12), Nil) => avieul => {
 	  avieul.outgoingMessage(ServiceSubscriptionConfirm(0, 12))
 	}
       }
@@ -258,13 +258,12 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 	  ()
 	}
       }
-      val data = 1 :: 2 :: Nil map(_.toByte)
       val counter = new java.util.concurrent.atomic.AtomicInteger
       def publishFun(data: Seq[Byte]): Unit @processCps = {
 	counter.addAndGet(data.head)
 	noop
       }
-      val res = receiveWithin(1 s)(service.subscribe(12, data, publishFun))
+      val res = receiveWithin(1 s)(service.subscribe(12, publishFun))
       val unsubscribe = res match {
 	case Left(f) => f
 	case Right(_) => fail
@@ -294,17 +293,16 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       val service = receiveWithin(1 s)(passadi.findServices).head
 
       avieul1.addHandler {
-	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	case ServiceSubscribe((0, 12), Nil) => avieul => {
 	  avieul.outgoingMessage(ServiceSubscriptionConfirm(0, 12))
 	}
       }
-      val data = 1 :: 2 :: Nil map(_.toByte)
       val counter1 = new java.util.concurrent.atomic.AtomicInteger
       def publishFun1(data: Seq[Byte]): Unit @processCps = {
 	counter1.addAndGet(data.head)
 	noop
       }
-      val res1 = receiveWithin(1 s)(service.subscribe(12, data, publishFun1))
+      val res1 = receiveWithin(1 s)(service.subscribe(12, publishFun1))
       val unsubscribe1 = res1 match {
 	case Left(f) => f
 	case Right(_) => fail
@@ -314,7 +312,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 	counter2.addAndGet(data.head)
 	noop
       }
-      val res2 = receiveWithin(1 s)(service.subscribe(12, data, publishFun2))
+      val res2 = receiveWithin(1 s)(service.subscribe(12, publishFun2))
       val unsubscribe2 = res2 match {
 	case Left(f) => f
 	case Right(_) => fail
@@ -342,11 +340,10 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       sleep(500 ms)
 
       val service = receiveWithin(1 s)(passadi.findServices).head
-      val data = 1 :: 2 :: Nil map(_.toByte)
 
       xbee.remove(avieul1)
 
-      val res = receiveWithin(1 s)(service.subscribe(12, data, a => ()))
+      val res = receiveWithin(1 s)(service.subscribe(12, a => ()))
       res match {
 	case Right(r) =>
 	  r should be(TransmitFailed)
@@ -361,13 +358,12 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       sleep(500 ms)
 
       avieul1.addHandler {
-	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	case ServiceSubscribe((0, 12), Nil) => avieul => {
 	  avieul.outgoingMessage(ServiceUnknown(0))
 	}
       }
       val service = receiveWithin(1 s)(passadi.findServices).head
-      val data = 1 :: 2 :: Nil map(_.toByte)
-      val res = receiveWithin(1 s)(service.subscribe(12, data, a => ()))
+      val res = receiveWithin(1 s)(service.subscribe(12, a => ()))
       res match {
 	case Right(r) =>
 	  r should be(UnknownAvieulService)
@@ -382,13 +378,12 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       sleep(500 ms)
 
       avieul1.addHandler {
-	case ServiceSubscribe((0, 12, data), Nil) => avieul => {
+	case ServiceSubscribe((0, 12), Nil) => avieul => {
 	  avieul.outgoingMessage(ServiceSubscriptionUnknown(0, 12))
 	}
       }
       val service = receiveWithin(1 s)(passadi.findServices).head
-      val data = 1 :: 2 :: Nil map(_.toByte)
-      val res = receiveWithin(1 s)(service.subscribe(12, data, a => ()))
+      val res = receiveWithin(1 s)(service.subscribe(12, a => ()))
       res match {
 	case Right(r) =>
 	  r should be(UnknownAvieulServiceSubscription)

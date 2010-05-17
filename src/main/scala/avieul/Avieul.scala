@@ -24,7 +24,7 @@ trait AvieulService {
 
   def call(callType: Short, payload: Seq[Byte]): MessageSelector[Either[Unit,AvieulError]]
   def request(requestType: Short, payload: Seq[Byte]): MessageSelector[Either[Seq[Byte],AvieulError]]
-  def subscribe(subscriptionType: Short, payload: Seq[Byte], handler: (Seq[Byte]) => Unit @processCps): MessageSelector[Either[() => MessageSelector[Unit],AvieulError]]
+  def subscribe(subscriptionType: Short, handler: (Seq[Byte]) => Unit @processCps): MessageSelector[Either[()=>Unit,AvieulError]]
 }
 sealed trait AvieulError
 object TransmitFailed extends AvieulError
