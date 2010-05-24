@@ -372,8 +372,6 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       unsubscribe()
       stop(xbee, passadi)
     }
-
-    //TODO subscr to a reannounced xbee (new service)
   }
 
   def requestInfo(services: List[(Int,Byte)]): PartialFunction[Seq[Byte],MockAvieul=>Unit] = {
@@ -426,8 +424,9 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     def withHandlers(handlers: List[PartialFunction[Seq[Byte],MockAvieul => Unit]]) = MockAvieulState(in, processor, handlers)
   }
   object MockAvieul extends SpawnableCompanion[MockAvieul] {
-    def apply() = {
-      start(SpawnAsRequiredChild)(new MockAvieul(XBeeAddress64(addressSource.incrementAndGet)))
+    def apply(): MockAvieul @processCps = apply(XBeeAddress64(addressSource.incrementAndGet))
+    def apply(address: XBeeAddress64): MockAvieul @processCps  = {
+      start(SpawnAsRequiredChild)(new MockAvieul(address))
     }
   }
 
