@@ -52,8 +52,8 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
         else {
           //Setup subscription manager
           val mgr = XBeeSubscriptionManager(sub.key)
-          //TODO register with dist mgr
-          state.withSubMgrs(state.subMgrs.updated(sub.key, mgr))
+          val dist = state.distributor.add(sub.key.xbee)(mgr.handlerProcess)
+          state.withSubMgrs(state.subMgrs.updated(sub.key, mgr)).withDistributor(dist)
         }
 
       val unsub = () => internalUnsubscribe(sub)
@@ -64,10 +64,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       val s1 = state.withSubscriptions(subs)
       if (state.subscriptions.find(_.key == sub.key).isEmpty) {
         //Stop the subscription manager since nobody is interested in that anymore
-        state.subMgrs.get(sub.key).foreach { mgr => {
-          mgr.terminate
-          //TODO unregister with dist mgr
-        }}
+        state.subMgrs.get(sub.key).foreach(_.terminate)
         state.withSubMgrs(state.subMgrs - sub.key)
       } else s1
     }}
@@ -89,7 +86,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
 		val result = body
 		reply(result)
 	      }
-	      val newDist = state.distributor.add(outer.address, serviceIndex, p)
+	      val newDist = state.distributor.add(outer.address, serviceIndex)(p)
 	      Some(state.withDistributor(newDist))
 	    }}
 	    private[this] def send(data: Seq[Byte]) = {
@@ -134,9 +131,10 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
         //TODO
       }
       override def terminate = process ! Terminate
+      override def handlerProcess = process
     }
     protected object XBeeSubscriptionManager extends SpawnableCompanion[XBeeSubscriptionManager] {
-      def apply(key: SubscriptionKey) = start(SpawnAsRequiredChild)(new XBeeSubscriptionManager(key))
+      def apply(key: SubscriptionKey) = start(SpawnAsMonitoredChild)(new XBeeSubscriptionManager(key))
     }
   }
 
@@ -147,36 +145,44 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     val serviceIndex: Byte
   }
 
-  protected class XBeeMessageDistributor(processes: List[(XBeeAddress,Byte,Process)]) {
-    def add(forXBee: XBeeAddress, forServiceIndex: Byte, process: Process) = {
-      val newList = (forXBee, forServiceIndex, process) :: processes
+  protected class XBeeMessageDistributor(processes: List[(XBeeAddress,Option[Byte],Process)]) {
+    def add(forXBee: XBeeAddress, forServiceIndex: Byte)(process: Process) = {
+      val newList = (forXBee, Some(forServiceIndex), process) :: processes
       new XBeeMessageDistributor(newList)
     }
-    protected[this] def all(body: Process => Unit) =
-      processes.view.map(_._3).foreach(body)
-    protected[this] def service(xbee: XBeeAddress, serviceIndex: Byte)(body: Process => Unit) =
-      processes.view.filter(e => e._1==xbee && e._2==serviceIndex).map(_._3).foreach(body)
-    protected[this] def xbee(xbee: XBeeAddress)(body: Process => Unit) =
-      processes.view.filter(_._1 == xbee).map(_._3).foreach(body)
-    
+    def add(forXBee: XBeeAddress)(process: Process) = {
+      //TODO
+      new XBeeMessageDistributor(processes)
+    }
+
+    type Element = (XBeeAddress,Option[Byte],Process)
+    protected[this] def forwardTo(filter: Element => Boolean, msg: Any) = {
+      processes.view.filter(e => filter(e)).map(_._3).foreach(_ ! msg)
+      this
+    }
+    def all(item: Element) = true
+    def service(xbee: XBeeAddress, serviceIndex: Byte)(item: Element) = {
+      item._1 == xbee && item._2.filter(_ != serviceIndex).isEmpty
+    }
+    def xbee(xbee: XBeeAddress)(item: Element) = item._1 == xbee
+
     def handle(msg: Any): XBeeMessageDistributor @processCps = msg match {
       case XBeeDataPacket(_, from, _, _, payload) => payload match {
 	case AnnounceService(_, _) =>
-          xbee(from)(_ ! msg)
-	  this
-	case msg @ GenericAvieulMessage((msgType, data), _) if (msgType >= 0x10 && msgType <= 0x4F && !data.isEmpty) => // call, request or subscription
+          forwardTo(xbee(from), msg)
+	case msg @ GenericAvieulMessage((msgType, data), _) if (msgType >= 0x10 && msgType <= 0x9F && !data.isEmpty) => // call, request or subscription etc. (everything relating to service)
 	  val serviceIndex = data.head
-	  service(from, serviceIndex)(_ ! msg)
-	  this
-	case other => this //do not forward
+          forwardTo(service(from, serviceIndex), msg)
+	case other =>
+          //do not forward
+          this
       }
-      //TODO don't think that works since its sent wrapped
-      case status: TransmitStatus =>
-	all(_ ! status)
-      this
       case end: ProcessEnd =>
 	val newList = processes.filterNot(_._3 == end.process)
         new XBeeMessageDistributor(newList)
+      case other =>
+        //ignore
+        this
     }
   }
 
@@ -185,6 +191,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
 
   protected trait SubscriptionManager {
     val key: SubscriptionKey
+    def handlerProcess: Process
     def terminate: Unit
   }
 
