@@ -41,10 +41,11 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     }
     override def findAvieuls = get(_.avieuls.values.toList)
     override def findServices = get(_.avieuls.values.flatMap(_.services).toList)
-    def close = cast_ { state => 
+    def close = cast_ { state => {
+      state.subMgrs.values.foreach(_.terminate)
       xbee.incomingMessageProcessor(None)
-       None
-    }
+      None
+    }}
 
     protected[this] def internalSubscribe(sub: Subscription) = call { state => {
       val subs = sub :: state.subscriptions
