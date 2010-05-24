@@ -128,8 +128,77 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
 
     protected class XBeeSubscriptionManager protected(override val key: SubscriptionKey) extends SubscriptionManager with Spawnable {
       protected[this] override def body = {
-        //TODO
+        def runLoop: Unit @processCps = {
+          subscribeWithRetry
+          if (run) runLoop
+          else noop
+        }
+        runLoop
+        unsubscribe
       }
+      protected[this] def subscribeWithRetry: Boolean @processCps = {
+        emptyMsgs
+        val r = subscribe
+        r match {
+          case Successful => noop; true
+          case Failed =>
+            receiveWithin(1 minute) {
+              case Terminate => noop; false
+              case Timeout => subscribeWithRetry
+            }
+          case UnknownSubOrService =>
+            receiveWithin(30 minutes) {
+              case Terminate => noop; false
+              case Timeout => subscribeWithRetry
+            }
+        }
+      }
+      protected[this] def subscribe: SubscriptionResult @processCps = {
+        val sent = send(ServiceSubscribe(key.serviceIndex, key.subscription))
+        if (sent.isSuccess) {
+	  receiveWithin(1 minute) {
+	    case ServiceSubscriptionConfirm((key.serviceIndex, key.subscription), _) =>
+	      Successful
+	    case ServiceSubscriptionUnknown((key.serviceIndex, key.subscription), _) =>
+	      UnknownSubOrService
+	    case ServiceUnknown(key.serviceIndex, _) =>
+	      UnknownSubOrService
+	    case Timeout =>
+              Failed
+	  }
+        } else {
+	  noop
+          Failed
+        }
+      }
+      protected sealed trait SubscriptionResult
+      object Successful extends SubscriptionResult
+      object Failed extends SubscriptionResult
+      object UnknownSubOrService extends SubscriptionResult
+
+      protected[this] def unsubscribe = {
+        xbee.sendPacket(key.xbee, ServiceUnsubscribe(key.serviceIndex, key.subscription))
+      }
+
+      protected[this] def run: Boolean @processCps = receive {
+        case Terminate => false
+        case XBeeDataPacket(_, from, _, _, AnnounceService(_,_ )) => 
+          //Device reannounces its services, it was probably restarted
+          // renew subscription
+          true
+        case other => run
+      }
+
+      protected[this] def send(data: Seq[Byte]): TransmitStatus @processCps = {
+        val selector = xbee.sendTrackedPacket(key.xbee, data)
+        val res = receiveWithin(5 s)(selector.option)
+        res.getOrElse(TransmitStatusNoAckReceived)
+      }
+      protected[this] def emptyMsgs: Unit @processCps = receiveNoWait {
+        case Timeout => ()
+        case something => emptyMsgs
+      }
+
       override def terminate = process ! Terminate
       override def handlerProcess = process
     }
@@ -151,8 +220,8 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       new XBeeMessageDistributor(newList)
     }
     def add(forXBee: XBeeAddress)(process: Process) = {
-      //TODO
-      new XBeeMessageDistributor(processes)
+      val newList = (forXBee, None, process) :: processes
+      new XBeeMessageDistributor(newList)
     }
 
     type Element = (XBeeAddress,Option[Byte],Process)
@@ -204,32 +273,3 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
   }
 }
 
-
-/*
-    protected[this] def subscribe = {
-      val sent = send(ServiceSubscribe(serviceIndex, subscriptionType))
-      if (sent.isSuccess) {
-	receiveWithin(1 minute) {
-	  case ServiceSubscriptionConfirm((`serviceIndex`, `subscriptionType`), _) =>
-	    Left(())
-	  case ServiceSubscriptionUnknown((`serviceIndex`, `subscriptionType`), _) =>
-	    Right(UnknownAvieulServiceSubscription)
-	  case ServiceUnknown(`serviceIndex`, _) =>
-	    Right(UnknownAvieulService)
-	  case Timeout =>
-	    Right(TransmitFailed)
-	}
-      } else {
-	noop
-	Right(TransmitFailed)
-      }
-    }
-    protected[this] def unsubscribe = {
-      xbee.sendPacket(forXBee, ServiceUnsubscribe(serviceIndex, subscriptionType))
-    }
-    protected[this] def send(data: Seq[Byte]): TransmitStatus @processCps = {
-      val selector = xbee.sendTrackedPacket(forXBee, data)
-      val res = receiveWithin(5 s)(selector.option)
-      res.getOrElse(TransmitStatusNoAckReceived)
-    }
-*/
