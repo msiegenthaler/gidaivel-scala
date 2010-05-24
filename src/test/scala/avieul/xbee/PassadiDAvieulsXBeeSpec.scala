@@ -218,15 +218,11 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       }
       val data = 1 :: 2 :: Nil map(_.toByte)
       val counter = new java.util.concurrent.atomic.AtomicInteger
-      def publishFun(data: Seq[Byte]): Unit @processCps = {
+      def publishFun(data: Seq[Byte]): Unit = {
 	counter.addAndGet(data.head)
-	noop
       }
-      val res = receiveWithin(1 s)(service.subscribe(12, publishFun))
-      val unsubscribe = res match {
-	case Left(f) => f
-	case Right(_) => fail
-      }
+      val unsubscribe = receiveWithin(1 s)(service.subscribe(12, publishFun))
+      sleep(200 ms)
 
       counter.get should be(0)
 
@@ -259,15 +255,10 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 	}
       }
       val counter = new java.util.concurrent.atomic.AtomicInteger
-      def publishFun(data: Seq[Byte]): Unit @processCps = {
+      def publishFun(data: Seq[Byte]): Unit = {
 	counter.addAndGet(data.head)
-	noop
       }
-      val res = receiveWithin(1 s)(service.subscribe(12, publishFun))
-      val unsubscribe = res match {
-	case Left(f) => f
-	case Right(_) => fail
-      }
+      val unsubscribe = receiveWithin(1 s)(service.subscribe(12, publishFun))
 
       counter.get should be(0)
 
@@ -298,25 +289,15 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 	}
       }
       val counter1 = new java.util.concurrent.atomic.AtomicInteger
-      def publishFun1(data: Seq[Byte]): Unit @processCps = {
+      def publishFun1(data: Seq[Byte]): Unit = {
 	counter1.addAndGet(data.head)
-	noop
       }
-      val res1 = receiveWithin(1 s)(service.subscribe(12, publishFun1))
-      val unsubscribe1 = res1 match {
-	case Left(f) => f
-	case Right(_) => fail
-      }
+      val unsubscribe1 = receiveWithin(1 s)(service.subscribe(12, publishFun1))
       val counter2 = new java.util.concurrent.atomic.AtomicInteger
-      def publishFun2(data: Seq[Byte]): Unit @processCps = {
+      def publishFun2(data: Seq[Byte]): Unit = {
 	counter2.addAndGet(data.head)
-	noop
       }
-      val res2 = receiveWithin(1 s)(service.subscribe(12, publishFun2))
-      val unsubscribe2 = res2 match {
-	case Left(f) => f
-	case Right(_) => fail
-      }
+      val unsubscribe2 = receiveWithin(1 s)(service.subscribe(12, publishFun2))
 
       counter1.get should be(0)
       counter2.get should be(0)
@@ -333,7 +314,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 
       stop(xbee, passadi)
     }
-    it_("should return TransmitFailed on subscribing a service from an unavailable xbee") {
+    it_("should not block on subscribing a service from an unavailable xbee") {
       val (passadi,xbee) = init
       val avieul1 = addAvieul(xbee)
       avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
@@ -343,54 +324,13 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 
       xbee.remove(avieul1)
 
-      val res = receiveWithin(1 s)(service.subscribe(12, a => ()))
-      res match {
-	case Right(r) =>
-	  r should be(TransmitFailed)
-	case Left(_) => fail
-      }
-      stop(xbee, passadi)
-   }
-   it_("should return UnknownAvieulService on subscribing an unknown service") {
-      val (passadi,xbee) = init
-      val avieul1 = addAvieul(xbee)
-      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
-      sleep(500 ms)
-
-      avieul1.addHandler {
-	case ServiceSubscribe((0, 12), Nil) => avieul => {
-	  avieul.outgoingMessage(ServiceUnknown(0))
-	}
-      }
-      val service = receiveWithin(1 s)(passadi.findServices).head
-      val res = receiveWithin(1 s)(service.subscribe(12, a => ()))
-      res match {
-	case Right(r) =>
-	  r should be(UnknownAvieulService)
-	case Left(_) => fail
-      }
+      val unsubscribe = receiveWithin(1 s)(service.subscribe(12, a => ()))
+      unsubscribe()
       stop(xbee, passadi)
     }
-    it_("subscribing to a unknown subscription type should return UnknownAvieulServiceSubscription") {
-      val (passadi,xbee) = init
-      val avieul1 = addAvieul(xbee)
-      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
-      sleep(500 ms)
 
-      avieul1.addHandler {
-	case ServiceSubscribe((0, 12), Nil) => avieul => {
-	  avieul.outgoingMessage(ServiceSubscriptionUnknown(0, 12))
-	}
-      }
-      val service = receiveWithin(1 s)(passadi.findServices).head
-      val res = receiveWithin(1 s)(service.subscribe(12, a => ()))
-      res match {
-	case Right(r) =>
-	  r should be(UnknownAvieulServiceSubscription)
-	case Left(_) => fail
-      }
-      stop(xbee, passadi)
-    }
+    //TODO subscr to a later announced xbee
+    //TODO subscr to a reannounced xbee
   }
 
   def requestInfo(services: List[(Int,Byte)]): PartialFunction[Seq[Byte],MockAvieul=>Unit] = {
@@ -454,7 +394,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     sleep(100 ms)
     (passadi, xbee)
   }
-  def stop(xbee: LocalXBee, passadi: PassadiDAvieulsXBee) = {
+  def stop(xbee: LocalXBee, passadi: PassadiDAvieuls) = {
     passadi.close
     xbee.close
   }

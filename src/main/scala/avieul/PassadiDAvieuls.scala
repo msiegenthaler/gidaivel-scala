@@ -17,4 +17,9 @@ trait PassadiDAvieuls {
    * Find all services.
    */
   def findServices: MessageSelector[List[AvieulService]]
+
+  /**
+   * Stop the passadi.
+   */
+  def close: Unit
 }

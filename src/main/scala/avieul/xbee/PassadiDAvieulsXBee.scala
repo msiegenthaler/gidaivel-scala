@@ -4,6 +4,7 @@ import ch.inventsoft.scalabase.process._
 import Messages._
 import ch.inventsoft.xbee._
 import ch.inventsoft.scalabase.oip._
+import ch.inventsoft.scalabase.log._
 import ch.inventsoft.scalabase.extcol.ListUtil._
 import ch.inventsoft.gidaivel.avieul._
 import AvieulProtocol._
@@ -19,7 +20,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     start(as)(new PassadiDAvieulsXBee(xbee))
   }
 
-  protected class PassadiDAvieulsXBee(protected[this] val xbee: LocalXBee) extends PassadiDAvieuls with StateServer[State] {
+  protected class PassadiDAvieulsXBee(protected[this] val xbee: LocalXBee) extends PassadiDAvieuls with StateServer[State] with Log {
     protected[this] override def initialState = {
       xbee.incomingMessageProcessor(Some(process))
       discoverAvieuls //Announce us and tell everybody to register itself to us
@@ -27,6 +28,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     }
     protected[this] override def messageHandler(state: State) = {
       case XBeeDataPacket(`xbee`, from, _, _, AnnounceService(services, _)) =>
+        log.debug("Annouce from {} has been received with {} services", from, services.size)
 	val avieul = makeAvieul(from, services)
         Some(state.addAvieul(avieul))
       case rest =>
@@ -48,12 +50,12 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       val subs = sub :: state.subscriptions
       val s1 = state.withSubscriptions(subs)
       
-      val s2 = if (state.subMgrs.contains(sub.key)) s1
+      val s2 = if (s1.subMgrs.contains(sub.key)) s1
         else {
           //Setup subscription manager
           val mgr = XBeeSubscriptionManager(sub.key)
-          val dist = state.distributor.add(sub.key.xbee)(mgr.handlerProcess)
-          state.withSubMgrs(state.subMgrs.updated(sub.key, mgr)).withDistributor(dist)
+          val dist = s1.distributor.add(sub.key.xbee)(mgr.handlerProcess)
+          s1.withSubMgrs(s1.subMgrs.updated(sub.key, mgr)).withDistributor(dist)
         }
 
       val unsub = () => internalUnsubscribe(sub)
@@ -62,13 +64,33 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     protected[this] def internalUnsubscribe(sub: Subscription) = cast { state => {
       val subs = state.subscriptions.filterNot(_ == sub)
       val s1 = state.withSubscriptions(subs)
-      if (state.subscriptions.find(_.key == sub.key).isEmpty) {
+      if (s1.subscriptions.find(_.key == sub.key).isEmpty) {
         //Stop the subscription manager since nobody is interested in that anymore
-        state.subMgrs.get(sub.key).foreach(_.terminate)
-        state.withSubMgrs(state.subMgrs - sub.key)
+        s1.subMgrs.get(sub.key).foreach(_.terminate)
+        s1.withSubMgrs(state.subMgrs - sub.key)
       } else s1
     }}
+    protected[this] def internalPublish(sub: SubscriptionKey, data: Seq[Byte]) = cast { state => {
+      log.trace("Publishing data for {} to enlisted subscribers", sub)
+      state.subscriptions.view.filter(_.key == sub).foreach(_.handler(data))
+      state
+    }}
       
+    protected[this] def internalChild[A](address: XBeeAddress, serviceIndex: Byte)(body: => A @processCps) = call_? { (state: State, reply: A => Unit) => {
+      val p = spawnChild(Monitored) {
+	val result = body
+	reply(result)
+      }
+      val newDist = state.distributor.add(address, serviceIndex)(p)
+      Some(state.withDistributor(newDist))
+    }}
+    protected[this] def internalChild_?[A](address: XBeeAddress, serviceIndex: Byte)(body: Function1[Function1[A,Unit],Unit @processCps]) = call_? { (state: State, reply: A => Unit) => {
+      val p = spawnChild(Monitored) {
+	body(reply)
+      }
+      val newDist = state.distributor.add(address, serviceIndex)(p)
+      Some(state.withDistributor(newDist))
+    }}
 
     protected[this] def makeAvieul(xbeeAddress: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)]): XBeeAvieul = {
       new XBeeAvieul {
@@ -81,43 +103,41 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
 	    override val serviceType = t
 	    override val version = ServiceVersion(v)
 	    override val providedBy = outer
-	    private[this] def child[A](body: => A @processCps) = call_? { (state: State, reply: A => Unit) => {
-	      val p = spawnChild(Monitored) {
-		val result = body
-		reply(result)
-	      }
-	      val newDist = state.distributor.add(outer.address, serviceIndex)(p)
-	      Some(state.withDistributor(newDist))
-	    }}
 	    private[this] def send(data: Seq[Byte]) = {
 	      val selector = xbee.sendTrackedPacket(address, data)
 	      val res = receiveWithin(5 s)(selector.option)
 	      res.getOrElse(TransmitStatusNoAckReceived)
 	    }
+            protected[this] def child[A] = internalChild[A](outer.address, serviceIndex) _
+            protected[this] def child_?[A] = internalChild_?[A](outer.address, serviceIndex) _
 	    override def call(callType: Short, payload: Seq[Byte]) = child {
+              log.debug("Calling service {}-{}-{}", Array(address, serviceIndex, callType))
 	      val sent = send(ServiceCall(serviceIndex, callType, payload))
 	      if (sent.isSuccess) Left(())
 	      else Right(TransmitFailed)
 	    }
-	    override def request(requestType: Short, payload: Seq[Byte]) = child {
+	    override def request(requestType: Short, payload: Seq[Byte]) = child_? { reply =>
+              log.debug("Requesting service {}-{}-{}", Array(address, serviceIndex, requestType))
 	      val sent = send(ServiceRequest(serviceIndex, requestType, payload))
-	      if (sent.isSuccess) {
-		receiveWithin(5 minutes) {
-		  case ServiceResponse((`serviceIndex`, `requestType`, data), _) =>
-		    Left(data)
-		  case ServiceUnknown(`serviceIndex`, _) =>
-		    Right(UnknownAvieulService)
-		  case ServiceRequestUnknown((`serviceIndex`, `requestType`), _) =>
-		    Right(UnknownAvieulServiceRequest)
-		  case Timeout =>
-		    Right(TransmitFailed)
-		}
-	      } else {
-		noop
-		Right(TransmitFailed)
-	      }
+              if (sent.isSuccess) {
+                val address: XBeeAddress = outer.address
+                receiveWithin(2 minutes) {
+                  case XBeeMessage(`address`, ServiceRequestUnknown((`serviceIndex`, `requestType`), _)) =>
+                    reply(Right(UnknownAvieulServiceRequest))
+                  case XBeeMessage(`address`, ServiceUnknown(`serviceIndex`, _)) =>
+                    reply(Right(UnknownAvieulService))
+                  case XBeeMessage(`address`, ServiceResponse((`serviceIndex`, `requestType`, data), _)) =>
+                    reply(Left(data))
+                  case Timeout =>
+                    reply(Right(TransmitFailed))
+                }
+              } else {
+                noop
+                reply(Right(TransmitFailed))
+              }
 	    }
 	    override def subscribe(subscriptionType: Short, handler: (Seq[Byte]) => Unit) = {
+              log.debug("Subscribing to service {}-{}-{}", Array(address, serviceIndex, subscriptionType))
               val sub = Subscription(SubscriptionKey(address, serviceIndex, subscriptionType), handler)
               internalSubscribe(sub)
 	    }
@@ -129,7 +149,9 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     protected class XBeeSubscriptionManager protected(override val key: SubscriptionKey) extends SubscriptionManager with Spawnable {
       protected[this] override def body = {
         def runLoop: Unit @processCps = {
+          log.trace("Establishing subscription {}", key)
           subscribeWithRetry
+          log.debug("Subscription {} has been set up", key)
           if (run) runLoop
           else noop
         }
@@ -142,12 +164,15 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
         r match {
           case Successful => noop; true
           case Failed =>
-            receiveWithin(1 minute) {
+            receive {
+              case XBeeMessage(key.xbee, AnnounceService(_, _)) => subscribeWithRetry
               case Terminate => noop; false
               case Timeout => subscribeWithRetry
+              case other => noop; false
             }
           case UnknownSubOrService =>
-            receiveWithin(30 minutes) {
+            receive {
+              case XBeeMessage(key.xbee, AnnounceService(_, _)) => subscribeWithRetry
               case Terminate => noop; false
               case Timeout => subscribeWithRetry
             }
@@ -156,12 +181,13 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       protected[this] def subscribe: SubscriptionResult @processCps = {
         val sent = send(ServiceSubscribe(key.serviceIndex, key.subscription))
         if (sent.isSuccess) {
+          val xbee: XBeeAddress = key.xbee
 	  receiveWithin(1 minute) {
-	    case ServiceSubscriptionConfirm((key.serviceIndex, key.subscription), _) =>
+	    case XBeeMessage(`xbee`, ServiceSubscriptionConfirm((key.serviceIndex, key.subscription), _)) =>
 	      Successful
-	    case ServiceSubscriptionUnknown((key.serviceIndex, key.subscription), _) =>
+	    case XBeeMessage(`xbee`, ServiceSubscriptionUnknown((key.serviceIndex, key.subscription), _)) =>
 	      UnknownSubOrService
-	    case ServiceUnknown(key.serviceIndex, _) =>
+	    case XBeeMessage(`xbee`, ServiceUnknown(key.serviceIndex, _)) =>
 	      UnknownSubOrService
 	    case Timeout =>
               Failed
@@ -177,14 +203,19 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       object UnknownSubOrService extends SubscriptionResult
 
       protected[this] def unsubscribe = {
+        log.debug("Subscription {} has been stopped", key)
         xbee.sendPacket(key.xbee, ServiceUnsubscribe(key.serviceIndex, key.subscription))
       }
 
       protected[this] def run: Boolean @processCps = receive {
         case Terminate => false
-        case XBeeDataPacket(_, from, _, _, AnnounceService(_,_ )) => 
+        case XBeeMessage(key.xbee, ServicePublish((key.serviceIndex, key.subscription, data), _)) =>
+          internalPublish(key, data)
+          run
+        case XBeeMessage(key.xbee, AnnounceService(_,_ )) => 
           //Device reannounces its services, it was probably restarted
           // renew subscription
+          log.debug("Refreshing subscription since xbee has reannounced itself")
           true
         case other => run
       }
@@ -214,7 +245,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     val serviceIndex: Byte
   }
 
-  protected class XBeeMessageDistributor(processes: List[(XBeeAddress,Option[Byte],Process)]) {
+  protected class XBeeMessageDistributor(processes: List[(XBeeAddress,Option[Byte],Process)]) extends Log {
     def add(forXBee: XBeeAddress, forServiceIndex: Byte)(process: Process) = {
       val newList = (forXBee, Some(forServiceIndex), process) :: processes
       new XBeeMessageDistributor(newList)
@@ -225,7 +256,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     }
 
     type Element = (XBeeAddress,Option[Byte],Process)
-    protected[this] def forwardTo(filter: Element => Boolean, msg: Any) = {
+    protected[this] def forwardTo(filter: Element => Boolean, msg: => XBeeMessage) = {
       processes.view.filter(e => filter(e)).map(_._3).foreach(_ ! msg)
       this
     }
@@ -237,16 +268,21 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
 
     def handle(msg: Any): XBeeMessageDistributor @processCps = msg match {
       case XBeeDataPacket(_, from, _, _, payload) => payload match {
-	case AnnounceService(_, _) =>
-          forwardTo(xbee(from), msg)
-	case msg @ GenericAvieulMessage((msgType, data), _) if (msgType >= 0x10 && msgType <= 0x9F && !data.isEmpty) => // call, request or subscription etc. (everything relating to service)
+	case packet @ AnnounceService(_, _) =>
+          forwardTo(xbee(from), XBeeMessage(from, packet))
+	case packet @ GenericAvieulMessage((msgType, data), _) if (msgType >= 0x10 && msgType <= 0x9F && !data.isEmpty) => // call, request or subscription etc. (everything relating to service)
 	  val serviceIndex = data.head
-          forwardTo(service(from, serviceIndex), msg)
+          forwardTo(service(from, serviceIndex), XBeeMessage(from, packet))
 	case other =>
           //do not forward
           this
       }
       case end: ProcessEnd =>
+        end match {
+          case ProcessExit(_) => ()
+          case ProcessKill(_, _, _) => ()
+          case ProcessCrash(_, cause) =>log.warn("A passadi d'avieuls child process crashed: {}", cause)
+        }
 	val newList = processes.filterNot(_._3 == end.process)
         new XBeeMessageDistributor(newList)
       case other =>
@@ -254,8 +290,11 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
         this
     }
   }
+  protected case class XBeeMessage(from: XBeeAddress, data: Seq[Byte])
 
-  protected case class SubscriptionKey(xbee: XBeeAddress, serviceIndex: Byte, subscription: Short)
+  protected case class SubscriptionKey(xbee: XBeeAddress, serviceIndex: Byte, subscription: Short) {
+    override def toString = "Subscription "+xbee+"-"+serviceIndex+"-"+subscription
+  }
   protected case class Subscription(key: SubscriptionKey, handler: Seq[Byte] => Unit)
 
   protected trait SubscriptionManager {
