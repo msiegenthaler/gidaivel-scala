@@ -328,9 +328,52 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
       unsubscribe()
       stop(xbee, passadi)
     }
+    it_("should support subscribing to a at that time not available xbee") {
+      val (passadi,xbee) = init
 
-    //TODO subscr to a later announced xbee
-    //TODO subscr to a reannounced xbee
+      val avieul1 = addAvieul(xbee)
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      sleep(500 ms)
+
+      val service = receiveWithin(1 s)(passadi.findServices).head
+
+      xbee.remove(avieul1)
+      sleep(200 ms)
+
+      avieul1.addHandler {
+	case ServiceSubscribe((0, 12), Nil) => avieul => {
+	  avieul.outgoingMessage(ServiceSubscriptionConfirm(0, 12))
+	}
+      }
+      avieul1.addHandler {
+	case ServiceUnsubscribe((0, 12), Nil) => avieul => {
+	  ()
+	}
+      }
+      val counter = new java.util.concurrent.atomic.AtomicInteger
+      def publishFun(data: Seq[Byte]): Unit = {
+	counter.addAndGet(data.head)
+      }
+      val unsubscribe = receiveWithin(1 s)(service.subscribe(12, publishFun))
+
+      counter.get should be(0)
+
+      avieul1.outgoingMessage(ServicePublish(0, 12, 1 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter.get should be(0)
+
+      xbee.addRemote(avieul1)
+      sleep(200 ms)
+
+      avieul1.outgoingMessage(ServicePublish(0, 12, 1 :: Nil map(_.toByte)))
+      sleep(200 ms)
+      counter.get should be(1)
+
+      unsubscribe()
+      stop(xbee, passadi)
+    }
+
+    //TODO subscr to a reannounced xbee (new service)
   }
 
   def requestInfo(services: List[(Int,Byte)]): PartialFunction[Seq[Byte],MockAvieul=>Unit] = {

@@ -165,6 +165,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
         r match {
           case Successful => noop; true
           case Failed =>
+            log.trace("Could not setup {}. Retrying", key)
             receive {
               case XBeeMessage(key.xbee, AnnounceService(_, _)) => subscribeWithRetry
               case Terminate => noop; false
@@ -172,6 +173,7 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
               case other => noop; false
             }
           case UnknownSubOrService =>
+            log.trace("Could not setup {} because service or subscriptionType is unknown. Retrying..", key)
             receive {
               case XBeeMessage(key.xbee, AnnounceService(_, _)) => subscribeWithRetry
               case Terminate => noop; false
@@ -182,13 +184,12 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       protected[this] def subscribe: SubscriptionResult @processCps = {
         val sent = send(ServiceSubscribe(key.serviceIndex, key.subscription))
         if (sent.isSuccess) {
-          val xbee: XBeeAddress = key.xbee
 	  receiveWithin(1 minute) {
-	    case XBeeMessage(`xbee`, ServiceSubscriptionConfirm((key.serviceIndex, key.subscription), _)) =>
+	    case XBeeMessage(key.xbee, ServiceSubscriptionConfirm((key.serviceIndex, key.subscription), _)) =>
 	      Successful
-	    case XBeeMessage(`xbee`, ServiceSubscriptionUnknown((key.serviceIndex, key.subscription), _)) =>
+	    case XBeeMessage(key.xbee, ServiceSubscriptionUnknown((key.serviceIndex, key.subscription), _)) =>
 	      UnknownSubOrService
-	    case XBeeMessage(`xbee`, ServiceUnknown(key.serviceIndex, _)) =>
+	    case XBeeMessage(key.xbee, ServiceUnknown(key.serviceIndex, _)) =>
 	      UnknownSubOrService
 	    case Timeout =>
               Failed
