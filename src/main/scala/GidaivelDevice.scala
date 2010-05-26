@@ -1,12 +1,22 @@
 package ch.inventsoft
-package object gidaivel {
-  type Unregister = () => Unit
-}
-
 import ch.inventsoft.scalabase.process._
 import Messages._
 import ch.inventsoft.scalabase.oip._
 
+
+package object gidaivel {
+  type Unregister = () => Unit
+  type Answer[A] = MessageSelector[Either[A,GidaivelError]]
+}
+package gidaivel {
+
+
+sealed trait GidaivelError
+object DeviceUnavailable extends GidaivelError
+object UnknownRequest extends GidaivelError
+sealed trait ProtocolError extends GidaivelError
+case class UnknownReply(data: Seq[Byte]) extends ProtocolError
+case class IllegalReply(text: String) extends ProtocolError
 
 
 trait GidaivelDevice {
@@ -14,19 +24,22 @@ trait GidaivelDevice {
 
 
 trait OnOffSwitch extends GidaivelDevice {
-  def isOn: MessageSelector[Boolean]
+  def isOn: Answer[Boolean]
   def listenForChange(fun: Boolean => Unit @processCps): () => Unit
 }
 
 trait OnOffSwitchable extends GidaivelDevice {
   def switchOn = switch(true)
   def switchOff = switch(false)
-  def switch(on: Boolean): MessageSelector[Unit]
-  def switch: MessageSelector[Boolean]
-  def isOn: MessageSelector[Boolean]
+  def switch(on: Boolean): Answer[Unit]
+  def switch: Answer[Boolean]
+  def isOn: Answer[Boolean]
 }
 
-trait SimpleLamp extends OnOffSwitchable
+trait Lamp {
+}
+
+trait SimpleLamp extends OnOffSwitchable with Lamp
 
 
 
@@ -45,3 +58,4 @@ trait TV extends GidaivelDevice {
   def selectInput(to: Int): Unit
 }
 */
+}
