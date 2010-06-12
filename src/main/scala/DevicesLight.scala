@@ -5,6 +5,7 @@ import ch.inventsoft.gidaivel.avieul._
 
 
 trait AvieulDevice extends GidaivelDevice {
+  val serviceType: Long
   protected[this] val service: AvieulService
   protected[this] def request[A](requestType: Short, data: Seq[Byte])(fun: Function[Seq[Byte],Either[A,GidaivelError]]) = {
     service.request(requestType, data).map(_ match {
@@ -44,14 +45,14 @@ trait AvieulOnOffSwitchable extends OnOffSwitchable with AvieulDevice {
   }
 
   protected[this] def mapOnOffReply(data: Seq[Byte]) = data match {
-    case 0x00 :: Nil => Left(true)
-    case 0x01 :: Nil => Left(false)
+    case 0x00 :: Nil => Left(false)
+    case 0x01 :: Nil => Left(true)
     case other => Right(UnknownReply(other))
   }
 }
 
 class DirectOnOffLight(override protected[this] val service: AvieulService) extends SimpleLamp with AvieulOnOffSwitchable {
-
+  override val serviceType = 0x12L
 }
 
 
