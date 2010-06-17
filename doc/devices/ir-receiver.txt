@@ -1,0 +1,42 @@
+Infrared Receiver
+-----------------
+Service-Type: 0x00000010
+Version: 0x00
+Description: Receives codes from infrared remote controls.
+
+
+Calls
+-----
+<none>
+
+Requests
+--------
+* Load single-bit fixed-length code (request 0x0001)
+  Loads a IR "device profile". This load command supports IR-commands with a fixed length (in bits) and "single-bit" IR sequences.
+  Request:
+    * device id (1 byte): (device local) id of the IR-device (0-254)
+    * unit in us (2 bytes): units used in the rest of the message in microseconds (0-65535)
+    * preample length (1 byte): number of pulses in the preample
+    * bit length (1 byte): number of pulses for a bit
+    * suffix length (1 byte): number of pulses in the suffix. (preample + 2*bit + suffix <= 89)
+    * bit count (1 byte): Number of bits in a command (1-95)
+    * preample pulse (1 byte)*: [ exactly preample length times ]
+    	pulses in units that make up a "zero" bit (0-25%). The "detection" starts with a low state.
+    * bit "zero" pulse (1 byte)*: [ exactly bit length times ]
+    	pulses in units that make up a "zero" bit
+    * bit "one" pulse (1 byte)*: [ exactly bit length times ]
+    	pulses in units that make up a "one" bit
+    * suffix pulse (1 byte)*: [ exactly suffix length times ]
+    	pulses in units that make up the suffix
+  Response:
+    * device id (1 byte): id of the loaded IR-device
+
+
+Subscription
+------------
+* Subscribe to detected IR commands (0x0001)
+  Subscribe to all IR-commands detected by this receiver.
+  * Data: <empty>
+  * Publish: The IR-Receiver has detected an IR command for a device that was previously loaded by a load request.
+	  * device-id (1 byte): device id as set by "load device" commands
+	  * command (1-95 bytes): IR-device specific command that was received over IR.

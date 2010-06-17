@@ -1,0 +1,81 @@
+Avieuls Protocol
+----------------
+
+MESSAGE STRUCTURE:
+	* message type (1 byte)
+	* message body (max. 99 bytes, length is known to receiver)
+
+Remark: The message is wrapped inside XBee-TX/RX Packets, so the length is known and a checksum is already checked. So we don't need to include that again. Every request message may be sent as a broadcast. The packets also always contain the sender.
+
+
+MESSAGE TYPES:
+	requestInfo (0x01) [in]
+		Requests information about the device and its capabilities. The device responds with a announceServices message.
+		* (empty)
+
+	announceServices (0x02) [out]
+		Sends information about the devices capabilities and services. See the chapter "device services".
+		* service 1 (6 bytes): Service provided by the device
+		  * service index (1 byte): index of the service in the device.
+			* service type (4 bytes): type of the service as described in the chapter "device services"
+			* service version (1 byte): version of the service
+		* service 2 (6 bytes) [ optional, same structure as  service 1 ]
+		* ...				  [ more services, up to 16 total ]
+
+  serviceUnknown (0x10) [in]
+    The service requested is unknown to the device. Probably the service index was wrong.
+    * service (1 byte): the service-index that was requested, but does not exist
+    
+  serviceCall (0x20) [in]
+    A service-dependent call. The call will not produce a result-message (in contrast to a serviceRequest).
+    * service (1 byte): index of the service in the announceServices message
+    * request type (2 bytes): type of the request (service dependent).
+    * payload (up to 96 bytes): dependent on the service request type
+
+	serviceRequest (0x30) [in]
+		A service-dependent request to the device. The request will be answered by the device with a serviceResponse with the same type. Overlapping service requests from the same requestor are not explicitly supported, the answers might be received in an arbitrary order.
+		* service (1 byte): index of the service in the announceServices message
+		* request type (2 bytes): type of the request (service dependent).
+		* payload (up to 96 bytes): dependent on the service request type
+
+	serviceResponse (0x31) [out]
+		Response to a serviceRequest. One call always results in exactly one response, either a serviceResponse or a serviceRequestUnknown.
+		A service-dependent message from the device to the gateway.
+		* service (1 byte): index of the service in the announceServices message
+		* request type (2 bytes): type of the request this is the answer to.
+		* payload (up to 96 bytes): dependent on the service response type
+		
+	serviceRequestUnknown (0x3F) [out]
+	  The request type is unknown to or unsupported by the device/service.
+	  * service (1 byte): index of the service in the announceService message
+	  * request type (2 bytes): request type that is unknown or unsupported (see serviceRequest)
+
+	serviceSubscribe (0x40) [in]
+		Subscribe to messages a service (see servicePublish). Results in either a service subscriptionConfirm or a serviceSubscriptionUnknown message.
+		* service (1 byte): index of the service in the announceServices message
+		* subscription type (2 bytes): type of subscription (service dependent).
+		* payload (up to 96 bytes): dependent on the service
+
+	serviceUnsubscribe (0x41) [in]
+		Unsubscribe from a service (see serviceSubscribe).
+		* service (1 byte): index of the service in the announceServices message
+		* subscription type (2 bytes): type of subscription  (see serviceSubscribe).
+		
+	serviceSubscriptionConfirm (0x42) [out]
+	  Confirmation of a successful service subscription.
+		* service (1 byte): index of the service in the announceServices message
+		* subscription type (2 bytes): type of subscription  (see serviceSubscribe).
+
+  serviceSubscriptionUnknown (0x4F) [out]
+    The subscription could not be completed because the service does not support this subscription type.
+		* service (1 byte): index of the service in the announceServices message
+		* subscription type (2 bytes): type of subscription  (see serviceSubscribe).
+
+	servicePublish (0x49) [out]
+		Messages to subscribers (see serviceSubscribe).
+		A service-dependent message from the device to the gateway.
+		* service (1 byte): index of the service in the announceServices message
+		* subscription type (2 bytes): type of the subscription (see serviceSubscribe).
+		* payload (up to 96 bytes): dependent on the service
+
+

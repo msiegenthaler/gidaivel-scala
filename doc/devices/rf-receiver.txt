@@ -1,0 +1,8 @@
+RF Receiver
+-----------
+Service-Type: 0x00000011
+Version: 0x00
+Description: Receives codes from radio remote controls.
+
+
+Same as IR-Receiver (0x00000010)
