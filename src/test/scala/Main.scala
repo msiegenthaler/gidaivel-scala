@@ -41,7 +41,8 @@ object Main extends Application {
 spawnApp {
   println("Serial Ports (usbserial)")
   SerialPort.list.foreach(e => println("  "+e))
-  val portDesc = SerialPort.forName("/dev/cu.usbserial-A6008hNp").getOrElse(throw new RuntimeException("XBee not attached"))
+//  val portDesc = SerialPort.forName("/dev/cu.usbserial-A6008hNp").getOrElse(throw new RuntimeException("XBee not attached"))
+  val portDesc = SerialPort.forName("/dev/cu.usbserial-FTELSJ9T").getOrElse(throw new RuntimeException("XBee not attached"))
   println("Connecting to "+portDesc)
   val serialPort = portDesc.open(19200)(SpawnAsRequiredChild)
   println("Connected to "+portDesc)
@@ -58,7 +59,7 @@ spawnApp {
   println("initializing..")
   val passadi = PassadiDAvieulsXBee(xbee, SpawnAsRequiredChild)
   println("waiting for initialization and publication of avieuls..")
-  receiveWithin(3 s) { case Timeout => ()}
+  receiveWithin(5 s) { case Timeout => ()}
   println("initialized.")
   
   println("Looking for avieuls...")
@@ -71,12 +72,27 @@ spawnApp {
   }
   val services = receive { passadi.findServices }
 
-  val onOff = new DirectOnOffLight(services.find(_.serviceType == 0x12L).get)
-  println("Found a light")
-  val isOn = receive { onOff.isOn }
-  println("Current status is "+isOn+", switching")
-  val newIsOn = receive { onOff.switch }
-  println("New status is "+newIsOn)
+
+  val light = services.find(_.serviceType == 0x12L)
+  if (light.isDefined) {
+    println("Found a light")
+    val onOff = new DirectOnOffLight(light.get)
+    val isOn = receive { onOff.isOn }
+    println("Current status is "+isOn+", switching")
+    val newIsOn = receive { onOff.switch }
+    println("New status is "+newIsOn)
+  }
+  
+  val ir = services.find(_.serviceType == 0x10L)
+  if (ir.isDefined) {
+    println("Found a IR receiver")
+    val receiver = new IRReceiver(ir.get)
+    val unsub = receive { receiver.subscribe }
+    receiveWithin(30 seconds) { case Timeout => () }
+    unsub()
+  }
+  
+  receiveWithin(2 seconds) { case Timeout => () }
 
   println("done")
   xbee.close
