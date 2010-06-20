@@ -11,15 +11,16 @@ Calls
 
 Requests
 --------
-* Load single-bit fixed-length code (request 0x0001)
-  Loads a IR "device profile". This load command supports IR-commands with a fixed length (in bits) and "single-bit" IR sequences.
+* Load single-bit fixed-length device profile (request 0x0001)
+  Loads an IR device profile. This load command supports IR-commands with a fixed length (in bits) and "single-bit" IR sequences.
   Request:
     * device id (1 byte): (device local) id of the IR-device (0-254)
     * unit in us (2 bytes): units used in the rest of the message in microseconds (0-65535)
+    * repeats (1 byte): number of time the request is repeated
     * preample length (1 byte): number of pulses in the preample
     * bit length (1 byte): number of pulses for a bit
     * suffix length (1 byte): number of pulses in the suffix. (preample + 2*bit + suffix <= 89)
-    * bit count (1 byte): Number of bits in a command (1-95)
+    * bit count (1 byte): Number of bits in a command (1-94)
     * preample pulse (1 byte)*: [ exactly preample length times ]
     	pulses in units that make up a "zero" bit (0-25%). The "detection" starts with a low state.
     * bit "zero" pulse (1 byte)*: [ exactly bit length times ]
@@ -30,7 +31,19 @@ Requests
     	pulses in units that make up the suffix
   Response:
     * device id (1 byte): id of the loaded IR-device
+    * result (1 byte): 0x01 for ok, everything else for failed
 
+* Unload a device profile (request 0x0002)
+  Unload an IR device profile of any type.
+  Request:
+    * device id (1 byte): if of the IR device (0-254)
+  Response:
+    * device id (1 byte): id of the unloaded IR-device
+
+* Reset all device profiles (request 0x0003)
+  Unload all IR device profiles (of any type).
+  Request: <empty>
+  Response: <empty>
 
 Subscription
 ------------
