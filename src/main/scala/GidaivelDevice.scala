@@ -17,6 +17,7 @@ object UnknownRequest extends GidaivelError
 sealed trait ProtocolError extends GidaivelError
 case class UnknownReply(data: Seq[Byte]) extends ProtocolError
 case class IllegalReply(text: String) extends ProtocolError
+trait ServiceProblem extends GidaivelError
 
 
 trait GidaivelDevice {
