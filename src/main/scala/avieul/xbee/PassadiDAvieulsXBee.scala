@@ -27,12 +27,13 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       State(Map(), new XBeeMessageDistributor(Nil), Nil, Map())
     }
     protected[this] override def messageHandler(state: State) = {
-      case XBeeDataPacket(`xbee`, from, _, _, AnnounceService(services, _)) =>
+      case packet @ XBeeDataPacket(`xbee`, from, _, _, AnnounceService(services, _)) =>
         log.debug("Annouce from {} has been received with {} services", from, services.size)
 	val avieul = makeAvieul(from, services)
+        val newDist = state.distributor.handle(packet)
         Some(state.addAvieul(avieul))
       case other =>
-	val newDist = state.distributor.handle(other)
+        val newDist = state.distributor.handle(other)
         Some(state.withDistributor(newDist))
     }
 
