@@ -33,43 +33,8 @@ class IRReceiver(override protected[this] val service: AvieulService) extends Av
 
   //TODO reset on init (remove all devices from the service)
   
-  /**
-   * Convert sequences of durations into a short "unit" (x times baseUnit) and a byte sequence with the same
-   * durations converted to the "unit" (i. e. 320 us).
-   * The unit is chosen automatically to minimize the error.
-   * @return (unit length [in base unit], concated input [in units])
-   */
-  private def durationConvert(baseUnit: TimeUnit)(inputs: Seq[Duration]*): (Int, List[Byte]) = {
-    /**
-     * Finds the optional unit so all the values can be represented as byte*unit (approx. least error).
-     * Algorithm:
-     *  - Split the difference between the smallest (except 0) and the largest value into 255 parts (spans)
-     *  - Experiment by varying the part-size between 20 values around span
-     *  - Choose the one that gives the least absolute difference (not squared)
-     */
-    def findOptimalUnit(all: Seq[Int]) = {
-      def findLeastError(toTry: Seq[Int], values: Seq[Int], bestSoFar: Int = Int.MaxValue, bestValue: Int = 0): Int = {
-        if (toTry.isEmpty) bestValue
-        else {
-          val current = toTry.head
-          val error = values.foldLeft(0) { (t,e) =>
-            t + ((e.toDouble / current).round * current).abs.toInt
-          }
-          if (error < bestSoFar) findLeastError(toTry.tail, values, error, current)
-          else findLeastError(toTry.tail, values, bestSoFar, bestValue)
-        }
-      }
-      val max = all.max
-      val min = all.view.filter(_ > 0).min
-      val span = (max - min / 255d).round.toInt 
-      val candidate = (span-10).max(1).max(min) to (span+10).min(Int.MaxValue).min(max)
-      findLeastError(candidate, all)      
-    }    
-    val all = inputs.foldLeft[Seq[Int]](Nil)((l,e) => l ++ e.map(_.amountAs(baseUnit).toInt))
-    val unit = findOptimalUnit(all)
-    val pulses = all.map(e => (e.toDouble / unit).round.toByte).toList
-    (unit, pulses)
-  }
+  //TODO Test!
+
   
   def addDevice(device: IRDevice): MessageSelector[Either[Unit,GidaivelError]] = {
     //TODO code that gets a new device id and adds the device to the state
@@ -77,7 +42,7 @@ class IRReceiver(override protected[this] val service: AvieulService) extends Av
       case profile: SingleBitFixedLengthDeviceProfile =>
         val id: Byte = 0 //TODO find the id to assign
         val bitLen = profile.bitOne.size max profile.bitZero.size
-        val (unit, pulses) = durationConvert(Microseconds)(profile.preample, profile.bitZero.take(bitLen), profile.bitOne.take(bitLen), profile.suffix)
+        val (unit, pulses) = IRReceiver.durationConvert(Microseconds)(profile.preample, profile.bitZero.take(bitLen), profile.bitOne.take(bitLen), profile.suffix)
         val unit_low = (unit & 0xFF).toByte
         val unit_high = ((unit >> 8) & 0xFF).toByte
         val header = (
@@ -109,3 +74,45 @@ class IRReceiver(override protected[this] val service: AvieulService) extends Av
   private def b(a: Int) = a.toByte  
 }
 case class IRReceiverState(devices: List[IRDevice])
+
+
+object IRReceiver {
+  /**
+   * Convert sequences of durations into a short "unit" (x times baseUnit) and a byte sequence with the same
+   * durations converted to the "unit" (i. e. 320 us).
+   * The unit is chosen automatically to minimize the error.
+   * @return (unit length [in base unit], concated input [in units])
+   */
+  protected[gidaivel] def durationConvert(baseUnit: TimeUnit)(inputs: Seq[Duration]*): (Int, List[Byte]) = {
+    /**
+     * Finds the optional unit so all the values can be represented as byte*unit (approx. least error).
+     * Algorithm:
+     *  - take largest value and divide by 255 to find minimum unit size => c
+     *  - Experiment by varying the part-size between 20 values around c
+     *  - Choose the one that gives the least squared difference (not squared)
+     */
+    def findOptimalUnit(all: Seq[Int]) = {
+      def findLeastError(toTry: List[Int], values: Seq[Int], bestSoFar: Int = Int.MaxValue, bestValue: Int = 0): Int = toTry match {
+        case current :: rest =>
+          val error = values.foldLeft(0) { (t,e) =>
+            val byteVal = (e.toDouble / current).round.min(255).max(0)
+            val delta = e - byteVal*current
+            t + delta.toInt.abs
+          }
+          if (error == 0) current
+          else if (error < bestSoFar) findLeastError(rest, values, error, current)
+          else findLeastError(rest, values, bestSoFar, bestValue)
+        case Nil => bestValue
+      }
+      val max = all.max
+      val min = all.foldLeft(0)((m,e) => if (e>0 && (e<m || m==0)) e else m)
+      val c = (max / 255d).round.toInt
+      val candidates = (c).max(1).min(min) to (c+20).min(Int.MaxValue).min(max)
+      findLeastError(candidates.reverse.toList, all)      
+    }    
+    val all = inputs.foldLeft[Seq[Int]](Nil)((l,e) => l ++ e.map(_.amountAs(baseUnit).toInt))
+    val unit = findOptimalUnit(all)
+    val pulses = all.map(e => (e.toDouble / unit).round.toByte).toList
+    (unit, pulses)
+  }  
+}

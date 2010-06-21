@@ -87,7 +87,7 @@ spawnApp {
   if (ir.isDefined) {
     println("Found a IR receiver")
     val receiver = new IRReceiver(ir.get)
-    val unsub = receive { receiver.subscribe }
+    val unsub = receive { receiver.subscribe( c => println("# got command "+c)) }
     receiveWithin(30 seconds) { case Timeout => () }
     unsub()
   }
