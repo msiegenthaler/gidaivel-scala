@@ -8,9 +8,13 @@ import ch.inventsoft.gidaivel.avieul._
 import Messages._
 
 
-trait IRDevice {
+
+trait IRDevice extends GidaivelDevice {
   val profile: IRDeviceProfile
 }
+
+
+
 case class IRCommand(device: IRDevice, command: Long)
 
 sealed trait IRDeviceProfile
@@ -35,8 +39,7 @@ class IRReceiver(override protected[this] val service: AvieulService) extends Av
   
   //TODO Test!
 
-  
-  def addDevice(device: IRDevice): MessageSelector[Either[Unit,GidaivelError]] = {
+  protected[this] def addDevice(device: IRDevice): MessageSelector[Either[Unit,GidaivelError]] = {
     //TODO code that gets a new device id and adds the device to the state
     device.profile match {
       case profile: SingleBitFixedLengthDeviceProfile =>
