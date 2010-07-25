@@ -9,6 +9,12 @@ import Messages._
  */
 trait PassadiDAvieuls {
   /**
+   * Unique identifier of the passadi.
+   */
+//  val id: String
+//TODO
+  
+  /**
    * Find all available avieuls.
    */
   def findAvieuls: MessageSelector[List[Avieul]]

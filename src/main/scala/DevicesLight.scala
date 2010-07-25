@@ -3,6 +3,7 @@ package ch.inventsoft.gidaivel
 import ch.inventsoft.scalabase.binary._
 import ch.inventsoft.gidaivel.avieul._
 
+/*
 
 trait AvieulOnOffSwitchable extends OnOffSwitchable with AvieulDevice {
   override def isOn = {
@@ -28,7 +29,10 @@ trait AvieulOnOffSwitchable extends OnOffSwitchable with AvieulDevice {
 }
 
 class DirectOnOffLight(override protected[this] val service: AvieulService) extends SimpleLamp with AvieulOnOffSwitchable {
+  //TODO
+  override val id = GidaivelId("test", "test")
   override val serviceType = 0x12L
 }
+*/
 
 

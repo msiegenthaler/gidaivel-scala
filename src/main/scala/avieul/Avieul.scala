@@ -9,6 +9,12 @@ import Messages._
  */
 trait Avieul {
   /**
+   * Unique identifier of the avieul.
+   */
+//  val id: String
+//TODO
+  
+  /**
    * Query for the services of the avieul.
    */
   val services: List[AvieulService]

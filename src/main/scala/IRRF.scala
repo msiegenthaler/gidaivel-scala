@@ -8,7 +8,7 @@ import ch.inventsoft.gidaivel.avieul._
 import Messages._
 
 
-
+/*
 trait IRDevice extends GidaivelDevice {
   val profile: IRDeviceProfile
 }
@@ -28,11 +28,16 @@ trait SingleBitFixedLengthDeviceProfile extends IRDeviceProfile {
 }
 
 case class DeviceCouldNotBeAdded() extends ServiceProblem
+*/
 
 /**
  * Infrared command receiver.
  */
+/*
 class IRReceiver(override protected[this] val service: AvieulService) extends AvieulDevice { // with StateServer[IRReceiverState] {
+//TODO
+  override val id = GidaivelId("ir","test")
+
   override val serviceType = 0x10L
 
   //TODO reset on init (remove all devices from the service)
@@ -77,7 +82,7 @@ class IRReceiver(override protected[this] val service: AvieulService) extends Av
   private def b(a: Int) = a.toByte  
 }
 case class IRReceiverState(devices: List[IRDevice])
-
+*/
 
 object IRReceiver {
   /**
@@ -117,5 +122,5 @@ object IRReceiver {
     val unit = findOptimalUnit(all)
     val pulses = all.map(e => (e.toDouble / unit).round.toByte).toList
     (unit, pulses)
-  }  
+  }
 }

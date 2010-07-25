@@ -10,6 +10,7 @@ import ch.inventsoft.gidaivel.avieul._
 import ch.inventsoft.gidaivel.avieul.xbee._
 
 
+/*
 object Main extends Application {
   def spawnApp(body: => Any @processCps): Unit = {
     val sync = new scala.concurrent.SyncVar[Unit]
@@ -51,11 +52,10 @@ spawnApp {
   val xbee = LocalSeries1XBee(lowlevel)(SpawnAsRequiredChild)
   val localAddress = receive(xbee.address)
   println("The local xbee address is "+localAddress)
-/*
+
   val peers = receive { xbee.discover() }
   println("Found peer xbees")
   peers.foreach(e => println("  "+e))
-*/
   println("initializing..")
   val passadi = PassadiDAvieulsXBee(xbee, SpawnAsRequiredChild)
   println("waiting for initialization and publication of avieuls..")
@@ -71,7 +71,6 @@ spawnApp {
     e.services.foreach(s => println("    "+s))
   }
   val services = receive { passadi.findServices }
-
 
   val light = services.find(_.serviceType == 0x12L)
   if (light.isDefined) {
@@ -91,7 +90,6 @@ spawnApp {
     receiveWithin(30 seconds) { case Timeout => () }
     unsub()
   }
-  
   receiveWithin(2 seconds) { case Timeout => () }
 
   println("done")
@@ -102,3 +100,4 @@ spawnApp {
   receiveWithin(1 s) { case Timeout => ()} // give the serial port time to shut itself down
 }
 }
+*/
