@@ -1,6 +1,7 @@
 package ch.inventsoft.gidaivel.avieul.xbee
 
 import ch.inventsoft.scalabase.process._
+import ch.inventsoft.scalabase.process.cps.CpsUtils._
 import Messages._
 import ch.inventsoft.xbee._
 import ch.inventsoft.scalabase.oip._
@@ -17,16 +18,17 @@ import cps.CpsUtils._
  */
 object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawnable] {
   def apply(xbee: LocalXBee, as: SpawnStrategy) = {
-    start(as)(new PassadiDAvieulsXBee(xbee))
+    start(as)(new PassadiDAvieulsXBeeImpl(xbee))
   }
 
-  protected class PassadiDAvieulsXBee(protected[this] val xbee: LocalXBee) extends PassadiDAvieuls with StateServer[State] with Log {
-    protected[this] override def initialState = {
+  protected class PassadiDAvieulsXBeeImpl(protected[this] val xbee: LocalXBee) extends PassadiDAvieuls with StateServer with Log {
+    protected override type State = PassadiState
+    protected[this] override def init = {
       xbee.incomingMessageProcessor(Some(process))
       discoverAvieuls //Announce us and tell everybody to register itself to us
-      State(Map(), new XBeeMessageDistributor(Nil), Nil, Map())
+      PassadiState(Map(), new XBeeMessageDistributor(Nil), Nil, Map())
     }
-    protected[this] override def messageHandler(state: State) = {
+    protected override def handler(state: State) = super.handler(state).orElse_cps {
       case packet @ XBeeDataPacket(`xbee`, from, _, _, AnnounceService(services, _)) =>
         log.debug("Annouce from {} has been received with {} services", from, services.size)
 	val avieul = makeAvieul(from, services)
@@ -34,7 +36,11 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
         Some(state.addAvieul(avieul))
       case other =>
         val newDist = state.distributor.handle(other)
-        Some(state.withDistributor(newDist))
+        Some(state.copy(distributor=newDist))
+    }
+    protected[this] override def termination(state: State) = {
+      state.subMgrs.values.foreach(_.terminate)
+      xbee.incomingMessageProcessor(None)
     }
 
     protected[this] def discoverAvieuls = {
@@ -42,22 +48,19 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     }
     override def findAvieuls = get(_.avieuls.values.toList)
     override def findServices = get(_.avieuls.values.flatMap(_.services).toList)
-    def close = cast_ { state => {
-      state.subMgrs.values.foreach(_.terminate)
-      xbee.incomingMessageProcessor(None)
-      None
-    }}
+    def close = stop
 
     protected[this] def internalSubscribe(sub: Subscription) = call { state => {
       val subs = sub :: state.subscriptions
-      val s1 = state.withSubscriptions(subs)
+      val s1 = state.copy(subscriptions=subs)
       
       val s2 = if (s1.subMgrs.contains(sub.key)) s1
         else {
           //Setup subscription manager
           val mgr = XBeeSubscriptionManager(sub.key)
           val dist = s1.distributor.add(sub.key.xbee)(mgr.handlerProcess)
-          s1.withSubMgrs(s1.subMgrs.updated(sub.key, mgr)).withDistributor(dist)
+          val nsm = s1.subMgrs.updated(sub.key, mgr)
+          s1.copy(subMgrs = nsm, distributor = dist)
         }
 
       val unsub = () => internalUnsubscribe(sub)
@@ -65,11 +68,11 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     }}
     protected[this] def internalUnsubscribe(sub: Subscription) = cast { state => {
       val subs = state.subscriptions.filterNot(_ == sub)
-      val s1 = state.withSubscriptions(subs)
+      val s1 = state.copy(subscriptions=subs)
       if (s1.subscriptions.find(_.key == sub.key).isEmpty) {
         //Stop the subscription manager since nobody is interested in that anymore
         s1.subMgrs.get(sub.key).foreach(_.terminate)
-        s1.withSubMgrs(state.subMgrs - sub.key)
+        s1.copy(subMgrs = s1.subMgrs - sub.key)
       } else s1
     }}
     protected[this] def internalPublish(sub: SubscriptionKey, data: Seq[Byte]) = cast { state => {
@@ -78,21 +81,29 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
       state
     }}
       
-    protected[this] def internalChild[A](address: XBeeAddress, serviceIndex: Byte)(body: => A @processCps) = call_? { (state: State, reply: A => Unit) => {
-      val p = spawnChild(Monitored) {
-              val result = body
-              reply(result)
+    protected[this] def internalChild[A](address: XBeeAddress, serviceIndex: Byte)(body: => A @processCps) = {
+      this ! new ModifyStateMessage with MessageWithSimpleReply[A] {
+        override def execute(state: State) = {
+          val p = spawnChild(Required) {
+            val r = body
+            replyValue(r)
+          }
+          val nd = state.distributor.add(address, serviceIndex)(p)
+          state.copy(distributor=nd)
+        }
       }
-      val newDist = state.distributor.add(address, serviceIndex)(p)
-      Some(state.withDistributor(newDist))
-    }}
-    protected[this] def internalChild_?[A](address: XBeeAddress, serviceIndex: Byte)(body: Function1[Function1[A,Unit],Unit @processCps]) = call_? { (state: State, reply: A => Unit) => {
-      val p = spawnChild(Monitored) {
-              body(reply)
+    }
+    protected[this] def internalChild_?[A](address: XBeeAddress, serviceIndex: Byte)(body: Function1[Function1[A,Unit],Unit @processCps]) = {
+      this ! new ModifyStateMessage with MessageWithSimpleReply[A] {
+        override def execute(state: State) = {
+          val p = spawnChild(Required) {
+            val r = body(r => replyValue(r))
+          }
+          val nd = state.distributor.add(address, serviceIndex)(p)
+          state.copy(distributor=nd)
+        }
       }
-      val newDist = state.distributor.add(address, serviceIndex)(p)
-      Some(state.withDistributor(newDist))
-    }}
+    }
 
     protected[this] def makeAvieul(xbeeAddress: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)]): XBeeAvieul = {
       new XBeeAvieul {
@@ -113,35 +124,35 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
             protected[this] def child[A] = internalChild[A](outer.address, serviceIndex) _
             protected[this] def child_?[A] = internalChild_?[A](outer.address, serviceIndex) _
                   override def call(callType: Short, payload: Seq[Byte]) = child {
-              log.debug("Calling service {}-{}-{}", Array(address, serviceIndex, callType))
+                    log.debug("Calling service {}-{}-{}", Array(address, serviceIndex, callType))
                     val sent = send(ServiceCall(serviceIndex, callType, payload))
                     if (sent.isSuccess) Left(())
                     else Right(TransmitFailed)
                   }
                   override def request(requestType: Short, payload: Seq[Byte]) = child_? { reply =>
-              log.debug("Requesting service {}-{}-{}", Array(address, serviceIndex, requestType))
+                    log.debug("Requesting service {}-{}-{}", Array(address, serviceIndex, requestType))
                     val sent = send(ServiceRequest(serviceIndex, requestType, payload))
-              if (sent.isSuccess) {
-                val address: XBeeAddress = outer.address
-                receiveWithin(2 minutes) {
-                  case XBeeMessage(`address`, ServiceRequestUnknown((`serviceIndex`, `requestType`), _)) =>
-                    reply(Right(UnknownAvieulServiceRequest))
-                  case XBeeMessage(`address`, ServiceUnknown(`serviceIndex`, _)) =>
-                    reply(Right(UnknownAvieulService))
-                  case XBeeMessage(`address`, ServiceResponse((`serviceIndex`, `requestType`, data), _)) =>
-                    reply(Left(data))
-                  case Timeout =>
-                    reply(Right(TransmitFailed))
-                }
-              } else {
-                noop
-                reply(Right(TransmitFailed))
-              }
-            }
+                    if (sent.isSuccess) {
+                       val address: XBeeAddress = outer.address
+                       receiveWithin(2 minutes) {
+                         case XBeeMessage(`address`, ServiceRequestUnknown((`serviceIndex`, `requestType`), _)) =>
+                           reply(Right(UnknownAvieulServiceRequest))
+                         case XBeeMessage(`address`, ServiceUnknown(`serviceIndex`, _)) =>
+                           reply(Right(UnknownAvieulService))
+                         case XBeeMessage(`address`, ServiceResponse((`serviceIndex`, `requestType`, data), _)) =>
+                           reply(Left(data))
+                         case Timeout =>
+                           reply(Right(TransmitFailed))
+                       }
+                    } else {
+                      noop
+                      reply(Right(TransmitFailed))
+                    }
+                  }
                   override def subscribe(subscriptionType: Short, handler: (Seq[Byte]) => Unit) = {
-              log.debug("Subscribing to service {}-{}-{}", Array(address, serviceIndex, subscriptionType))
-              val sub = Subscription(SubscriptionKey(address, serviceIndex, subscriptionType), handler)
-              internalSubscribe(sub)
+                    log.debug("Subscribing to service {}-{}-{}", Array(address, serviceIndex, subscriptionType))
+                    val sub = Subscription(SubscriptionKey(address, serviceIndex, subscriptionType), handler)
+                    internalSubscribe(sub)
                   }
                 }
               }.toList
@@ -310,12 +321,8 @@ object PassadiDAvieulsXBee extends SpawnableCompanion[PassadiDAvieuls with Spawn
     def terminate: Unit
   }
 
-  protected case class State(avieuls: Map[XBeeAddress,XBeeAvieul], distributor: XBeeMessageDistributor, subscriptions: List[Subscription], subMgrs: Map[SubscriptionKey,SubscriptionManager]) {
-    def addAvieul(avieul: XBeeAvieul) = withAvieuls(avieuls.updated(avieul.address, avieul))
-    protected[this] def withAvieuls(avieuls: Map[XBeeAddress,XBeeAvieul]) = State(avieuls, distributor, subscriptions, subMgrs)
-    def withDistributor(distributor: XBeeMessageDistributor) = State(avieuls, distributor, subscriptions, subMgrs)
-    def withSubscriptions(subscriptions: List[Subscription]) = State(avieuls, distributor, subscriptions, subMgrs)
-    def withSubMgrs(subMgrs: Map[SubscriptionKey,SubscriptionManager]) = State(avieuls, distributor, subscriptions, subMgrs)
+  protected case class PassadiState(avieuls: Map[XBeeAddress,XBeeAvieul], distributor: XBeeMessageDistributor, subscriptions: List[Subscription], subMgrs: Map[SubscriptionKey,SubscriptionManager]) {
+    def addAvieul(avieul: XBeeAvieul) = copy(avieuls = this.avieuls.updated(avieul.address, avieul))
   }
 }
 
