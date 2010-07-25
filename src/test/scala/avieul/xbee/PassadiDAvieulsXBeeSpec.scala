@@ -3,6 +3,7 @@ package ch.inventsoft.gidaivel.avieul.xbee
 import org.scalatest._
 import matchers._
 import ch.inventsoft.scalabase.process._
+import ch.inventsoft.scalabase.process.cps.CpsUtils._
 import Messages._
 import ch.inventsoft.scalabase.oip._
 import ch.inventsoft.scalabase.time._
@@ -13,7 +14,6 @@ import scala.concurrent.SyncVar
 
 
 class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
-
   describe("Passadi d'avieuls XBee") {
     it_("should discover 2 avieuls if two are available") {
       val (passadi,xbee) = init
@@ -389,9 +389,10 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     xbee.addRemote(avieul)
     avieul
   }
-  class MockAvieul(override val address: XBeeAddress64) extends Avieul with RemoteXBee with StateServer[MockAvieulState] {
-    protected[this] override def initialState = MockAvieulState(Nil, None, Nil)
-    override def stop = cast_( state => None )
+  class MockAvieul(override val address: XBeeAddress64) extends Avieul with RemoteXBee with StateServer {
+    protected override type State = MockAvieulState
+    protected[this] override def init = MockAvieulState(Nil, None, Nil)
+    override def stop = super.stop
     override val services = Nil
     override def incomingMessage(msg: Seq[Byte]) = cast { state =>
       val avieul = this
@@ -449,7 +450,8 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     def stop: Unit
   }
   case class RemoteXBeeMessage(from: XBeeAddress, data: Seq[Byte])
-  class LocalXBeeMock extends LocalXBee with StateServer[LocalXBeeMockState] {
+  class LocalXBeeMock extends LocalXBee with StateServer {
+    protected override type State = LocalXBeeMockState
     def addRemote(remote: RemoteXBee) = cast { state =>
       remote.setProcessor(Some(self))
       remote.incomingMessage(RequestInfo())
@@ -458,20 +460,18 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     def remove(remote: RemoteXBee) = cast { state =>
       state.withRemotes(state.remotes.filterNot(_ == remote))
     }
-    protected[this] override def initialState = LocalXBeeMockState(Nil, None)
-    protected[this] override def messageHandler(state: LocalXBeeMockState) = {
+    protected[this] override def init = LocalXBeeMockState(Nil, None)
+    protected override def handler(state: LocalXBeeMockState) = super.handler(state).orElse_cps {
       case RemoteXBeeMessage(from, data) =>
 	state.processor.foreach(_ ! XBeeDataPacket(this, from, None, false, data))
 	Some(state)
     }
+    protected[this] override def termination(state: State) = state.remotes.foreach(_.stop)
     override def address = get { state => XBeeAddress64(1234L) }
     override def alias = get { state => None }
     override def alias(alias: Option[XBeeAddress16]) = cast { state => state }
     override val maxDataPerPacket = 100
-    override def close = cast_ { state => 
-      state.remotes.foreach(_.stop)
-      None
-    }
+    override def close = stop
     override def sendPacket(to: XBeeAddress, data: Seq[Byte]) = cast { state =>
       state.remotes.filter(_.address == to).foreach(_.incomingMessage(data))
       state
