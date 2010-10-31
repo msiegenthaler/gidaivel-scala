@@ -7,6 +7,12 @@ class GidaivelProject(info: ProjectInfo) extends DefaultProject(info) with AutoC
   override def packageSrcJar= defaultJarPath("-sources.jar")
   val sourceArtifact = Artifact.sources(artifactID)
   override def packageToPublishActions = super.packageToPublishActions ++ Seq(packageSrc)
+  def ivyPublishConfiguration = new DefaultPublishConfiguration("local", "release") { 
+    override protected def deliveredPathPattern = outputPath / "[artifact].[ext]" 
+    override def configurations = Some(List(Configurations.Compile, Configurations.Test)) 
+  } 
+  lazy val deliverIvy = deliverTask(deliverIvyModule, ivyPublishConfiguration, sbt.UpdateLogging.Quiet) 
+
 
   val inventsoftReleases = "Inventsoft Release Repository" at "http://mavenrepo.inventsoft.ch/repo"
   val inventsoftSnapshots = "Inventsoft Snapshot Repository" at "http://mavenrepo.inventsoft.ch/snapshot-repo"
