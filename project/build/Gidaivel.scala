@@ -4,10 +4,20 @@ class GidaivelProject(info: ProjectInfo) extends DefaultProject(info) with AutoC
   val continuations = compilerPlugin("org.scala-lang.plugins" % "continuations" % "2.8.0")
   override def compileOptions = CompileOption("-P:continuations:enable") :: CompileOption("-unchecked") :: super.compileOptions.toList
   
-  val logbackcore = "ch.qos.logback" % "logback-core" % "0.9.24"
-  val logbackclassic = "ch.qos.logback" % "logback-classic" % "0.9.24"
+  override def packageSrcJar= defaultJarPath("-sources.jar")
+  val sourceArtifact = Artifact.sources(artifactID)
+  override def packageToPublishActions = super.packageToPublishActions ++ Seq(packageSrc)
+
+  val inventsoftReleases = "Inventsoft Release Repository" at "http://mavenrepo.inventsoft.ch/repo"
+  val inventsoftSnapshots = "Inventsoft Snapshot Repository" at "http://mavenrepo.inventsoft.ch/snapshot-repo"
+  override def managedStyle = ManagedStyle.Maven
+  val publishTo = Resolver.sftp("Inventsoft Publish", "foxtrot.inventsoft.ch", "/inventsoft/dev/mavenrepo/snapshot-repo")
+  Credentials(Path.userHome / ".ivy2" / ".credentials", log)
   
-  override def testClasspath = super.testClasspath +++ ("lib-test" / "scalabase_2.8.0-2.0.0-SNAPSHOT-test.jar") 
-  val scalatest = "org.scalatest" % "scalatest" % "1.2-for-scala-2.8.0.final-SNAPSHOT" % "test"
-  val toolsSnapshot = ScalaToolsSnapshots
+
+  val scalaxbee = "ch.inventsoft" % "scala-xbee_2.8.0" % "1.0.0-SNAPSHOT"
+
+  val scalatest = "org.scalatest" % "scalatest" % "1.2" % "test"
+  val logbackcore = "ch.qos.logback" % "logback-core" % "0.9.24" % "test"
+  val logbackclassic = "ch.qos.logback" % "logback-classic" % "0.9.24" % "test"
 }
