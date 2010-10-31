@@ -36,7 +36,10 @@ trait PassadiXBee extends Passadi with StateServer with Log {
                  extends AvieulStatus {
     def signalStrength = signal.getOrElse(SignalStrength(0))
     def address = avieul.address
-    override def quality = signalStrength.asPercent
+    override def quality = new SignalQuality {
+    	val dBm = signalStrength.dBm
+    	val percentage = signalStrength.asPercent
+    }
     def update(signal: Option[SignalStrength]) = {
       copy(signal=signal, lastContact=TimePoint.current)
     }

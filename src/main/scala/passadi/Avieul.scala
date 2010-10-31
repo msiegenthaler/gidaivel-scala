@@ -22,8 +22,24 @@ trait AvieulStatus {
   val lastContact: TimePoint
   /** time since we last heard from this avieul */
   def notHeardFromIn: Duration = TimePoint.current - lastContact
-  /** 0-100: Signal strength of the contact (percentage) */
-  def quality: Int
+  /** quality of the signal received by this avieul */
+  def quality: SignalQuality
+}
+trait SignalQuality extends Ordered[SignalQuality] with Equals {
+	val dBm: Int
+	/** 0 - 100: strength relative to expected maximum */
+	val percentage: Int
+	override def compare(to: SignalQuality) = {
+		dBm.compare(to.dBm)
+	}
+	override def equals(that: Any) = that match {
+		case that: SignalQuality =>
+			that.canEqual(this) && dBm == that.dBm
+		case other => false
+	}
+	override def canEqual(that: Any) = that.isInstanceOf[SignalQuality]
+	override def hashCode = dBm.hashCode
+	override def toString = dBm.toString + " dBm"
 }
 
 /**

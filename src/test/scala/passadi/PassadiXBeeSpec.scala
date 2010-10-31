@@ -404,7 +404,10 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     override def services = replyInCallerProcess(Nil)
     override def status = replyInCallerProcess(Some(new AvieulStatus {
       override val lastContact = TimePoint.current
-      override def quality = 100
+      override def quality = new SignalQuality {
+    	  override val percentage = 90
+    	  override val dBm: Int = -30
+      }
     }))
     override def incomingMessage(msg: Seq[Byte]) = cast { state =>
       val avieul = this
