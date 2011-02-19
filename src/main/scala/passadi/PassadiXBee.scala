@@ -49,14 +49,14 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   val refreshTimeout: Duration = 30 seconds
   val sendTimeout: Duration = 8 seconds
 
-  protected[this] def openXBee: LocalXBee @process
-  protected[this] override def init = {
+  protected def openXBee: LocalXBee @process
+  protected override def init = {
     val xbee = ResourceManager[LocalXBee](openXBee, _.close).receive.resource
     xbee.setMessageHandler(process ! _)
     refresh
     PassadiState(xbee, Map(), new MessageDistributor(), Nil, Map(), _ => noop)
   }
-  protected[this] override def handler(state: State) = super.handler(state).orElse_cps {
+  protected override def handler(state: State) = super.handler(state).orElse_cps {
     case packet @ ReceivedXBeeDataPacket(from, ss, _, data) => 
       data match {
         case AnnounceServices(services, _) =>
@@ -100,10 +100,10 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   }
 
   override def avieuls = get(internalAvieuls(_))
-  protected[this] def internalAvieuls(state: State): Iterable[Avieul] =
+  protected def internalAvieuls(state: State): Iterable[Avieul] =
     state.avieuls.keys.map(proxy(_))
 
-  protected[this] def proxy(address: XBeeAddress) = new AvieulProxy(address)
+  protected def proxy(address: XBeeAddress) = new AvieulProxy(address)
 
   override def services = get { state =>
     val avieuls = state.avieuls.values.map(_.avieul)
@@ -120,7 +120,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
 
   override def close = stopAndWait
 
-  protected[this] def discardIfNoResponseSince(who: Set[XBeeAddress], t: TimePoint) = call { state =>
+  protected def discardIfNoResponseSince(who: Set[XBeeAddress], t: TimePoint) = call { state =>
     val (old,na) = state.avieuls.span { e =>
       val (address, avst) = e
       who.contains(address) && avst.lastContact < t
@@ -132,7 +132,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     val newState = state.copy(avieuls = na)
     (internalAvieuls(newState), newState)
   }
-  protected[this] def discoverAvieuls = cast { state =>
+  protected def discoverAvieuls = cast { state =>
     state.xbee.broadcast(RequestInfo())
     state
   }
@@ -140,11 +140,11 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   override def changeListener(l: ChangeListener) = cast { state =>
     state.copy(listener = l)
   }
-  protected[this] def fireListener(change: => PassadiChange) = async { state =>
+  protected def fireListener(change: => PassadiChange) = async { state =>
     state.listener(change)
   }
 
-  protected[this] def internalSubscribe(sub: Subscription) = call { state => {
+  protected def internalSubscribe(sub: Subscription) = call { state => {
     val subs = sub :: state.subscriptions
     val s1 = state.copy(subscriptions=subs)
       
@@ -162,7 +162,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     val unsub = () => internalUnsubscribe(sub)
     (unsub, s2)
   }}
-  protected[this] def internalUnsubscribe(sub: Subscription) = cast { state => {
+  protected def internalUnsubscribe(sub: Subscription) = cast { state => {
     val subs = state.subscriptions.filterNot(_ == sub)
     val s1 = state.copy(subscriptions=subs)
     if (s1.subscriptions.find(_.key == sub.key).isEmpty) {
@@ -171,13 +171,13 @@ trait PassadiXBee extends Passadi with StateServer with Log {
       s1.copy(subMgrs = s1.subMgrs - sub.key)
     } else s1
   }}
-  protected[this] def internalPublish(sub: SubscriptionKey, data: Seq[Byte]) = cast { state => {
+  protected def internalPublish(sub: SubscriptionKey, data: Seq[Byte]) = cast { state => {
     log.trace("Publishing data for {} to enlisted subscribers", sub)
     state.subscriptions.view.filter(_.key == sub).foreach_cps(_.handler(data))
     state
   }}
 
-  protected[this] def internalGetState(forAvieul: XBeeAddress) = get { state =>
+  protected def internalGetState(forAvieul: XBeeAddress) = get { state =>
     state.avieuls.get(forAvieul)
   }
 
@@ -204,7 +204,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
    * Spawns a (monitored) child process and adds it as a receiver for all messages sent to
    * that xbee/service combination
    */
-  protected[this] def childReceiver[A](forXBee: XBeeAddress, serviceIndex: Byte)(body: => A @process):
+  protected def childReceiver[A](forXBee: XBeeAddress, serviceIndex: Byte)(body: => A @process):
       Selector[A] @process = {
     this ! new ModifyStateMessage with MessageWithSimpleReply[A] {
       override def execute(state: State) = {
@@ -222,7 +222,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
    * Proxy to an xbee avieul.
    * This class exists so that XBeeAvieul can be immutable.
    */
-  protected[this] class AvieulProxy(val address: XBeeAddress) extends Avieul {
+  protected class AvieulProxy(val address: XBeeAddress) extends Avieul {
     override def services = get { state =>
       val res: Iterable[AvieulService] = state.avieuls.get(address) match {
         case Some(avst) => avst.avieul.services.toList
@@ -246,7 +246,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   /**
    * XBee that acts as an avieul.
    */
-  protected[this] class XBeeAvieul(val address: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)], xbee: LocalXBee) {
+  protected class XBeeAvieul(val address: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)], xbee: LocalXBee) {
     val services = serviceDefs.map { sd =>
       val (sindex, stype, sversion) = sd
       new XBeeAvieulService {
@@ -278,12 +278,12 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   /**
    * Service offered by an avieul
    */
-  protected[this] trait XBeeAvieulService extends AvieulService {
+  protected trait XBeeAvieulService extends AvieulService {
     val address: XBeeAddress
     val xbee: LocalXBee
     val index: Byte
     override def providedBy = replyInCallerProcess(proxy(address))
-    protected[this] def sendTo(data: Seq[Byte]) = {
+    protected def sendTo(data: Seq[Byte]) = {
       val result = xbee.sendTracked(address, data).receiveOption(sendTimeout).
                         getOrElse(TransmitStatusNoAckReceived)
       if (result == TransmitStatusNoAckReceived) markMaybeGone(address)
@@ -358,7 +358,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     }
 
     type Element = (XBeeAddress,Option[Byte],Process)
-    protected[this] def forwardTo(filter: Element => Boolean, msg: => XBeeMessage) = {
+    protected def forwardTo(filter: Element => Boolean, msg: => XBeeMessage) = {
       processes.view.filter(e => filter(e)).map(_._3).foreach_cps(_ ! msg)
       this
     }
@@ -399,9 +399,9 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   protected case class SubscriptionKey(xbee: XBeeAddress, serviceIndex: Byte, subscription: Short) {
     override def toString = "Subscription "+xbee+"-"+serviceIndex+"-"+subscription
   }
-  protected[this] case class Subscription(key: SubscriptionKey, handler: Seq[Byte] => Unit @process)
+  protected case class Subscription(key: SubscriptionKey, handler: Seq[Byte] => Unit @process)
   /** manages a subscription */
-  protected[this] trait SubscriptionManager {
+  protected trait SubscriptionManager {
     val key: SubscriptionKey
     def handlerProcess: Process
     def terminate: Unit @process
@@ -409,8 +409,8 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   /**
    * Implementation of the subscription manager
    */
-  protected[this] class XBeeSubscriptionManager protected(override val key: SubscriptionKey, xbee: LocalXBee) extends SubscriptionManager with Spawnable {
-    protected[this] override def body = {
+  protected class XBeeSubscriptionManager protected(override val key: SubscriptionKey, xbee: LocalXBee) extends SubscriptionManager with Spawnable {
+    protected override def body = {
       def runLoop: Unit @process = {
         log.trace("Establishing subscription {}", key)
         subscribeWithRetry
@@ -421,7 +421,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
       runLoop
       unsubscribe
     }
-    protected[this] def subscribeWithRetry: Boolean @process = {
+    protected def subscribeWithRetry: Boolean @process = {
       emptyMsgs
       val r = subscribe
       r match {
@@ -443,7 +443,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
           }
       }
     }
-    protected[this] def subscribe: SubscriptionResult @process = {
+    protected def subscribe: SubscriptionResult @process = {
       val sent = send(ServiceSubscribe(key.serviceIndex, key.subscription))
       if (sent.isSuccess) {
         receiveWithin(1 minute) {
@@ -466,12 +466,12 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     object Failed extends SubscriptionResult
     object UnknownSubOrService extends SubscriptionResult
 
-    protected[this] def unsubscribe = {
+    protected def unsubscribe = {
       log.debug("Subscription {} has been stopped", key)
       xbee.send(key.xbee, ServiceUnsubscribe(key.serviceIndex, key.subscription))
     }
 
-    protected[this] def run: Boolean @process = receive {
+    protected def run: Boolean @process = receive {
       case Terminate => false
       case XBeeMessage(key.xbee, ServicePublish((key.serviceIndex, key.subscription, data), _)) =>
         internalPublish(key, data)
@@ -484,13 +484,13 @@ trait PassadiXBee extends Passadi with StateServer with Log {
       case other => run
     }
 
-    protected[this] def send(data: Seq[Byte]): TransmitStatus @process = {
+    protected def send(data: Seq[Byte]): TransmitStatus @process = {
       val selector = xbee.sendTracked(key.xbee, data)
       val res = receiveWithin(sendTimeout)(selector.option).getOrElse(TransmitStatusNoAckReceived)
       if (res == TransmitStatusNoAckReceived) markMaybeGone(key.xbee)
       res
     }
-    protected[this] def emptyMsgs: Unit @process = receiveNoWait {
+    protected def emptyMsgs: Unit @process = receiveNoWait {
       case Timeout => ()
       case something => emptyMsgs
     }
@@ -498,7 +498,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     override def terminate = process ! Terminate
     override def handlerProcess = process
   }
-  protected[this] object XBeeSubscriptionManager {
+  protected object XBeeSubscriptionManager {
     def apply(key: SubscriptionKey, xbee: LocalXBee): SubscriptionManager @process = {
       Spawner.start(new XBeeSubscriptionManager(key, xbee), SpawnAsMonitoredChild)
     }

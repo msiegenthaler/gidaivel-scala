@@ -6,7 +6,11 @@ Description: Light that can be turned on or off and can be queried for its curre
 
 Calls
 -----
-<none>
+* turnOnOff (0x0001)
+  Turn the lamp on
+  Body:
+    * on/off (1 byte): 0x00 for off and 0x01 for on
+
 
 Requests
 --------
@@ -15,23 +19,12 @@ Requests
   Request: <empty>
   Reply:
     * status (1 byte): 0x00 for off and 0x01 for on
-    
-* switch to (0x0002)
-  Turn the light on or off
-  Request:
-    * status (1 byte): 0x00 to turn off or 0x01 to turn on
-  Reply:
-    * status (1 byte): 0x00 if lamp if now off, 0x01 if it's on
-    
-* switch (0x0003)
-  Switch the current status of the lamp (on->off, off->on)
-  Request: <empty>
-  Reply:
-    * status (1 byte): 0x00 if lamp if now off, 0x01 if it's on
-
-
 
 Subscriptions
 -------------
-<none>
+* onOffChange (0x0001)
+  The light has changed status (from on to off or from off to on).
+  Subscribe: <empty>
+  Publish
+    * new status (1 byte): 0x00 for off and 0x01 for on
 

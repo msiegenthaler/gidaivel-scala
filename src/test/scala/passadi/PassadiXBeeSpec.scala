@@ -399,7 +399,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     case class MockAvieulState(in: List[Seq[Byte]],
                                processor: Option[Process],
                                handlers: List[PartialFunction[Seq[Byte],MockAvieul => Unit @process]])
-    protected[this] override def init = MockAvieulState(Nil, None, Nil)
+    protected override def init = MockAvieulState(Nil, None, Nil)
     override def stop = super.stop
     override def services = replyInCallerProcess(Nil)
     override def status = replyInCallerProcess(Some(new AvieulStatus {
@@ -479,14 +479,14 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     def remove(remote: RemoteXBee) = cast { state =>
       state.copy(remotes = state.remotes.filterNot(_ == remote))
     }
-    protected[this] override def init = LocalXBeeMockState(Nil, _ => noop)
+    protected override def init = LocalXBeeMockState(Nil, _ => noop)
     protected override def handler(state: LocalXBeeMockState) = super.handler(state).orElse_cps {
       case RemoteXBeeMessage(from, data) =>
         val packet = ReceivedXBeeDataPacket(from, None, false, data)
 	state.handler(packet)
 	Some(state)
     }
-    protected[this] override def termination(state: State) = state.remotes.foreach_cps(_.stop)
+    protected override def termination(state: State) = state.remotes.foreach_cps(_.stop)
     override def address = get { state => XBeeAddress64(1234L) }
     override def alias = get { state => None }
     override def alias(alias: Option[XBeeAddress16]) = call { state => ((), state) }

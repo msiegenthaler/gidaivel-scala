@@ -21,7 +21,9 @@ class GidaivelProject(info: ProjectInfo) extends DefaultProject(info) with AutoC
   Credentials(Path.userHome / ".ivy2" / ".credentials", log)
   
 
-  val scalaxbee = "ch.inventsoft" % "scala-xbee_2.8.0" % "1.0.0-SNAPSHOT"
+  val scalaxbee = "ch.inventsoft" % "scala-xbee_2.8.1" % "1.0.0-SNAPSHOT"
+  val scalaxmpp = "ch.inventsoft" % "scala-xmpp_2.8.1" % "1.0.0-SNAPSHOT"
+  val liftjson = "net.liftweb" % "lift-json_2.8.1" % "2.2"
 
   val scalatest = "org.scalatest" % "scalatest" % "1.2" % "test"
   val logbackcore = "ch.qos.logback" % "logback-core" % "0.9.24" % "test"
