@@ -7,7 +7,6 @@ import scalabase.time._
 import scalabase.oip._
 import scalaxmpp._
 import scalaxmpp.component._
-import passadi._
 import net.liftweb.json._
 import JsonAST._
 
@@ -146,50 +145,5 @@ private object ChatXmlCommand {
         case e: SAXException => None
       }
     }
-  }
-}
-
-
-/**
- * Gidaivel agent representing an avieul service
- */
-trait AvieulServiceAgent extends GidaivelAgent {
-  val avieulService: AvieulService
-  protected val timeout = 5 s
-  protected def avieul = avieulService.providedBy.receiveWithin(timeout)
-
-  private val namespace = "urn:gidaivel:avieul"
-
-  protected override def iqGet(state: State) = super.iqGet(state) :+ info :+ signal
-
-  protected val info = mkIqGet {
-    case (get @ FirstElem(ElemName("info", namespace)),state) =>
-      val st = "0x"+avieulService.serviceType.toHexString
-      val sv = avieulService.version.toString
-      val avieul = avieulService.providedBy.toString
-      val xml = <info xmlns={namespace}>
-        <avieul-service>
-          <avieul>{avieul}</avieul>
-          <type>{st}</type>
-          <version>{sv}</version>
-        </avieul-service></info>
-      (get.resultOk(xml), state)
-  }
-  protected val signal = mkIqGet {
-    case (get @ FirstElem(ElemName("signal", namespace)),state) =>
-      val status = avieul.status.receiveWithin(timeout)
-      status match {
-        case Some(status) =>
-          val an = avieul.toString
-          val xml = <info xmlns={namespace}>
-            <avieul>{an}</avieul>
-            <signal-quality>{status.quality}</signal-quality>
-            <last-contact>{status.lastContact}</last-contact></info>
-          (get.resultOk(xml), state)
-        case None =>
-          noop
-          val xml = <info xmlns={namespace}><unknown/></info>
-          (get.resultOk(xml), state)
-      }
   }
 }

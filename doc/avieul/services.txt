@@ -1,0 +1,9 @@
+List of Services
+----------------
+
+For the detailed service specification see the files in the services subfolder.
+
+
+Lighting
+--------
+- 0x00000012L OnOffLamp: Simple lamp that can be turned on or off

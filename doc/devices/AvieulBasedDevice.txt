@@ -1,0 +1,56 @@
+Avieul based Device
+-------------------
+Base class for all devices that base on a AvieulService.
+Extends: <nothing>
+Namespace: urn:gidaivel:avieul
+
+IQ-Get:
+  * Info: Information about the Avieul service and the Avieul
+  * Signal: Signal quality of the connection to the Avieul
+Message:
+  * Resync: Tries to resync the state with the avieul
+  
+  
+  
+Info
+----
+Information about the avieul service and the avieul.
+Type: IQ-Get
+Request:
+  default namespace = "urn:gidaivel:avieul"
+  element info { empty }
+Response:
+  default namespace = "urn:gidaivel:avieul"
+  element info {
+    element avieul { text },
+    element avieul-service {
+      element type { xsd:string { pattern="0x[a-f0-9]{8}" } },
+      element version { xsd:unsignedByte }
+    }
+  }
+
+
+Signal
+------
+Signal quality of the connection to the Avieul
+Type: IQ-Get
+Request:
+  default namespace = "urn:gidaivel:avieul"
+  element signal { empty }
+Response:
+ default namespace = "urn:gidaivel:avieul"
+ element signal {
+  element avieul { text },
+  element signal-quality { 
+    element percent { xsd:unsignedByte { minInclusive="0" maxInclusive="100" } }
+  },
+  element last-contact { xsd:dateTime }
+ }
+
+
+Resync
+------
+Tries to resynchronize the devices state with the state of the avieul. This is normally not necessary, but might resolve a "buggy" situation. The implementation depends upon the device.
+Message:
+  default namespace = "urn:gidaivel:avieul"
+  element resync { empty }

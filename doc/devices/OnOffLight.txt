@@ -1,0 +1,55 @@
+On-Off Light
+------------
+Simple light that can be turned on or off.
+Extends: AvieulBasedDevice
+Namespace: urn:gidaivel:lights:onOff
+
+Presence: 
+ * on/off: current state of the light (on/off)
+IQ-Get: 
+ * is on: Return whether the light is currently turned on or off
+Message:
+ * turn on: Turn the the lamp on
+ * turn off: Turn the lamp off
+
+
+
+Presence: on/off
+----------------
+Current state of the light.
+Presence:
+  default namespace = "urn:gidaivel:lights:onOff"
+  element is-on {
+    element on { empty } |
+    element off { empty}
+  }
+   
+Is On
+----
+Return whether the light is currently turned on or off.
+Type: IQ-Get
+Request:
+  default namespace = "urn:gidaivel:lights:onOff"
+  element is-on { empty }
+Response:
+  default namespace = "urn:gidaivel:lights:onOff"
+  element is-on {
+    element on { empty } |
+    element off { empty}
+  }
+
+Turn On
+-------
+Turn the light on
+Type: Message
+Message:
+  default namespace = "urn:gidaivel:lights:onOff"
+  element turn-on { empty }
+
+Turn Off
+-------
+Turn the light off.
+Type: Message
+Message:
+  default namespace = "urn:gidaivel:lights:onOff"
+  element turn-off { empty }

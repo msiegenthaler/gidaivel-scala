@@ -12,8 +12,9 @@ import JsonAST._
 
 /**
  * Light that can be switched on or off.
+ * See the documententation under /docs/devices.
  */
-trait OnOffLightAgent extends AvieulServiceAgent {
+trait OnOffLightAgent extends AvieulBasedDevice {
   protected case class State(friends: Seq[JID], isOn: Boolean, unsubscribe: () => Unit @process) {
     def withFriends(friends: Seq[JID]) = copy(friends=friends)
     def persistent = PersistentState(friends.toList)
@@ -27,53 +28,49 @@ trait OnOffLightAgent extends AvieulServiceAgent {
     State(ps.friends, s, unsub)
   }
 
-  protected override def iqGet(state: State) = super.iqGet(state) :+ queryOnOff
-  protected override def message(state: State) = super.message(state)
+  protected override def iqGet(state: State) = super.iqGet(state) :+ isOn
+  protected override def message(state: State) = super.message(state) :+ turnOnOff
 
-  val namespace = "urn:gidaivel:lights:simple"
-  val xml_on = <on xmlns={namespace} />
-  val xml_off = <off xmlns={namespace} />
+  val namespace = "urn:gidaivel:lights:onOff"
+
+
+  protected val isOn = mkIqGet {
+    case (get @ FirstElem(ElemName("is-on", namespace)),state) =>
+      val res = <is-on xmlns={namespace}>{if (state.isOn) <on/> else <off/>}</is-on>
+      (get.resultOk(res), state)
+  }
+  protected val turnOnOff = mkMsg {
+    case (FirstElem(ElemName("turn-on", namespace)),state) =>
+      device_turnOnOff(true)
+      state
+    case (FirstElem(ElemName("turn-off", namespace)),state) =>
+      device_turnOnOff(false)
+      state
+  }
+  private def device_turnOnOff(on: Boolean) = {
+    val status: Byte = if (on) 1 else 0
+    avieulService.call(0x0001, status :: Nil)
+    noop
+  }
 
   protected override def status(state: State) = {
     val s = if (state.isOn) {
-      <status>on</status> ++ xml_on
+      <status>on</status> ++ <is-on xmlns={namespace}><on/></is-on>
      } else {
-      <status>off</status> ++ xml_off
+      <status>off</status> ++ <is-on xmlns={namespace}><off/></is-on>
     }
     Status(<show>chat</show> ++ s)
   }
 
-  protected def queryOnOff = mkIqGet {
-    case (get @ FirstElem(ElemName("query", namespace)),state) =>
-      val res = if (state.isOn) xml_on else xml_off
-      (get.resultOk(res), state)
-  }
-
-/*
-  protected def chat = mkCommand {
-    case ("on", _, state) =>
-      device_turnOnOff(true)
-      ("ok", state)
-    case ("off", _, state) =>
-      device_turnOnOff(false)
-      ("ok", state)
-    case ("isOn", _, state) =>
-      val status = if (state.isOn) "on" else "off"
-      (status, state)
-    case ("resync", _, state) =>
-      val on = device_isOn.receiveWithin(10 s)
-      ("ok", state.copy(isOn = on))
-  }
-*/
-
-  protected def onChange(newOn: Boolean) = cast { state =>
+  /* called from the avieul subscription */
+  private def onChange(newOn: Boolean) = cast { state =>
     if (state.isOn == newOn) state
     else {
       announce
       state.copy(isOn = newOn)
     }
   }
-
+  /* ask the device whether it's turned on or off */
   protected def device_isOn = {
     val sel = avieulService.request(0x0001, Nil)
     sel.map_cps { _ match {
@@ -85,10 +82,5 @@ trait OnOffLightAgent extends AvieulServiceAgent {
       case Right(error) =>
         throw new RuntimeException(error.toString)
     }}
-  }
-  protected def device_turnOnOff(on: Boolean) = {
-    val status: Byte = if (on) 1 else 0
-    avieulService.call(0x0001, status :: Nil)
-    noop
   }
 }

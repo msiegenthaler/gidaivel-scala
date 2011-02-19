@@ -1,9 +1,0 @@
-List of Devices
----------------
-
-For the detailed device specification see the files in the devices subfolder.
-
-
-Lighting
---------
-- 0x00000012L OnOffLamp: Simple lamp that can be turned on or off
