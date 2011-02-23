@@ -223,6 +223,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
    * This class exists so that XBeeAvieul can be immutable.
    */
   protected class AvieulProxy(val address: XBeeAddress) extends Avieul {
+    override val id = address.toString
     override def services = get { state =>
       val res: Iterable[AvieulService] = state.avieuls.get(address) match {
         case Some(avst) => avst.avieul.services.toList
@@ -250,6 +251,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     val services = serviceDefs.map { sd =>
       val (sindex, stype, sversion) = sd
       new XBeeAvieulService {
+        override val id = ""+address+"."+stype
         override val serviceType = stype
         override val version = ServiceVersion(sversion)
         override val index = sindex

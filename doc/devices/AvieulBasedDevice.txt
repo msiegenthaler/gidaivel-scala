@@ -2,7 +2,8 @@ Avieul based Device
 -------------------
 Base class for all devices that base on a AvieulService.
 Extends: <nothing>
-Namespace: urn:gidaivel:avieul
+Feature: urn:gidaivel:avieul
+Identity: category=gidaivel, type=avieul
 
 IQ-Get:
   * Info: Information about the Avieul service and the Avieul

@@ -11,6 +11,9 @@ import scalabase.time._
  * avieul service.
  */
 trait Avieul extends Equals {
+  /** unique identifier of this avieul */
+  val id: String
+
   /** The services offered by this avieul */
   def services: Selector[Iterable[AvieulService]] @process
 
@@ -46,6 +49,8 @@ trait SignalQuality extends Ordered[SignalQuality] with Equals {
  * A home automation service offered by an avieul device.
  */
 trait AvieulService extends Equals {
+  /** Unique identifier of this service (across all avieuls) */
+  val id: String
   val serviceType: Int
   val version: ServiceVersion
 
@@ -67,6 +72,9 @@ trait AvieulService extends Equals {
    * @return unsubscription function
    */
   def subscribe(subscriptionType: Short, handler: Seq[Byte] => Unit @process): Selector[()=>Unit @process] @process
+}
+object AvieulService {
+  def unapply(service: AvieulService) = Some((service.serviceType, service.version))
 }
 
 

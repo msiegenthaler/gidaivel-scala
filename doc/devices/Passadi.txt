@@ -1,0 +1,20 @@
+Passadi
+-------
+The component that bridges the Avieuls to XMPP.
+Extends: <nothing>
+Feature: urn:gidaivel:passadi
+Identity:
+ * category=gidaivel type=passadi
+ * category=gateway type=gidaivel-passadi
+
+Message:
+  * refresh: Contacts all Aviuels and asks for a up-to-date service list. Recreates the agents if necessary.
+  
+  
+Refresh
+-------
+Contacts all Aviuels and asks for a up-to-date service list. Recreates the agents if necessary.
+Type: Message
+  default namespace = "urn:gidaivel:passadi"
+  element refresh { empty }
+  

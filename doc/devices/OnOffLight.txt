@@ -2,7 +2,7 @@ On-Off Light
 ------------
 Simple light that can be turned on or off.
 Extends: AvieulBasedDevice
-Namespace: urn:gidaivel:lights:onOff
+Feature: urn:gidaivel:lights:onOff
 
 Presence: 
  * on/off: current state of the light (on/off)

@@ -14,7 +14,7 @@ import JsonAST._
  * Light that can be switched on or off.
  * See the documententation under /docs/devices.
  */
-trait OnOffLightAgent extends AvieulBasedDevice {
+trait OnOffLight extends AvieulBasedDevice {
   protected case class State(friends: Seq[JID], isOn: Boolean, unsubscribe: () => Unit @process) {
     def withFriends(friends: Seq[JID]) = copy(friends=friends)
     def persistent = PersistentState(friends.toList)
@@ -32,7 +32,7 @@ trait OnOffLightAgent extends AvieulBasedDevice {
   protected override def message(state: State) = super.message(state) :+ turnOnOff
 
   val namespace = "urn:gidaivel:lights:onOff"
-
+  protected override def features = super.features :+ namespace
 
   protected val isOn = mkIqGet {
     case (get @ FirstElem(ElemName("is-on", namespace)),state) =>

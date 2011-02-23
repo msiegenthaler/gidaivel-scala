@@ -395,6 +395,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     avieul
   }
   class MockAvieul(override val address: XBeeAddress64) extends Avieul with RemoteXBee with StateServer {
+    override val id = address.toString
     protected override type State = MockAvieulState
     case class MockAvieulState(in: List[Seq[Byte]],
                                processor: Option[Process],

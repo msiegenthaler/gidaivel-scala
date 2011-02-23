@@ -11,13 +11,9 @@ import net.liftweb.json._
 import JsonAST._
 
 
+
 trait AuthorizedMembership {
   def isAllowed(jid: JID): Boolean
-}
-
-trait JsonStorage {
-  def store(key: String, value: JValue): Unit @process
-  def load(key: String): JValue @process
 }
 
 
@@ -49,6 +45,7 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
   /** Tries to save the state asynchonously */
   protected def saveState = cast { state => 
     spawnChild(NotMonitored) {
+      log.debug("Saving the state of {}", jid)
       val ser = serializeState(state)
       storeToStorage(ser)
     }
@@ -57,7 +54,12 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
 
   protected override final def init = {
     val stored = loadFromStorage
-    init(stored)
+    log.trace("Loaded state for {}: {}", jid, stored)
+    val stored2 = stored match {
+      case JNull => JArray(Nil) // Null parses to good (null values)
+      case other => other
+    }
+    init(stored2)
   }
 
   /** Initialization (start of the agent) */
@@ -76,6 +78,7 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
 
   protected override def message(state: State) =
     super.message(state) :+ chatToIq
+  protected override def iqGet(state: State) = super.iqGet(state) :+ discoInfo
 
   /**
    * Basically a debugging over chat.
@@ -111,7 +114,22 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
     ()
   }
 
+  protected val discoInfo = mkIqGet {
+    case (get @ FirstElem(ElemName("query", "http://jabber.org/protocol/disco#info")),state) =>
+      val fs = features.map(f => <feature var={f} />)
+      val ids = identities.map { i =>
+        if (i.name.isDefined) <identity category={i.category} type={i.typ} name={i.name.get} />
+        else <identity category={i.category} type={i.typ} />                                
+      }
+      (get.resultOk(<query xmlns="http://jabber.org/protocol/disco#info">{fs ++ ids}</query>), state)
+  }
+
+  /** supported features */
+  protected def features: Seq[String] = "http://jabber.org/protocol/disco#info" :: "urn:gidaivel:base" :: Nil
+  protected def identities: Seq[XmppIdentity] = XmppIdentity("gidaivel", "device") :: Nil
+
   protected override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+    log.trace("{} is asked to accept subscription from {}", jid, from)
     if (isAllowed(from)) {
       val f = state.friends :+ from
       saveState
@@ -147,3 +165,5 @@ private object ChatXmlCommand {
     }
   }
 }
+
+case class XmppIdentity(category: String, typ: String, name: Option[String]=None)

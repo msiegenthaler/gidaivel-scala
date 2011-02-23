@@ -15,11 +15,14 @@ import passadi._
  * See the documententation under /docs/devices.
  */
 trait AvieulBasedDevice extends GidaivelAgent {
+  val avieul: Avieul
   val avieulService: AvieulService
   protected val timeout = 5 s
-  protected def avieul = avieulService.providedBy.receiveWithin(timeout)
 
   private val namespace = "urn:gidaivel:avieul"
+
+  protected override def features = super.features :+ namespace
+  protected override def identities = super.identities :+ XmppIdentity("gidaivel", "avieul", Some(avieul.id))
 
   protected override def iqGet(state: State) = super.iqGet(state) :+ info :+ signal
 
@@ -27,9 +30,8 @@ trait AvieulBasedDevice extends GidaivelAgent {
     case (get @ FirstElem(ElemName("info", namespace)),state) =>
       val st = "0x"+avieulService.serviceType.toHexString
       val sv = avieulService.version.toString
-      val avieul = avieulService.providedBy.toString
       val xml = <info xmlns={namespace}>
-        <avieul>{avieul}</avieul>
+        <avieul>{avieul.id}</avieul>
         <avieul-service>
           <type>{st}</type>
           <version>{sv}</version>
@@ -48,7 +50,6 @@ trait AvieulBasedDevice extends GidaivelAgent {
             <last-contact>{status.lastContact.asXmlDateTime}</last-contact></info>
           (get.resultOk(xml), state)
         case None =>
-          noop
           val xml = <info xmlns={namespace}><unknown/></info>
           (get.resultOk(xml), state)
       }
