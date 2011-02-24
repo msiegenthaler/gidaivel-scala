@@ -48,19 +48,22 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   val requestTimeout: Duration = 1 minute
   val refreshTimeout: Duration = 30 seconds
   val sendTimeout: Duration = 8 seconds
+  @volatile var id: Option[String] = None
 
   protected def openXBee: LocalXBee @process
   protected override def init = {
     val xbee = ResourceManager[LocalXBee](openXBee, _.close).receive.resource
     xbee.setMessageHandler(process ! _)
     refresh
+    id = Some(xbee.address.map(_.toString).receiveWithin(sendTimeout))
+    log.info("Initialized PassadiXBee with local address {}", id)
     PassadiState(xbee, Map(), new MessageDistributor(), Nil, Map(), _ => noop)
   }
   protected override def handler(state: State) = super.handler(state).orElse_cps {
     case packet @ ReceivedXBeeDataPacket(from, ss, _, data) => 
       data match {
         case AnnounceServices(services, _) =>
-          log.debug("Announce from {} has been received ({} services)", from, services.size)
+          log.info("Announce from {} has been received ({} services)", from, services.size)
           state.avieuls.get(from) match {
             case Some(avst) =>
               if (!avst.avieul.sameServices(services)) {
@@ -111,6 +114,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   }
 
   override def refresh = async { state =>
+    log.debug("Refresh: Contacting all Avieuls")
     val addresses = Set() ++ state.avieuls.keys
     discoverAvieuls
     val started = TimePoint.current
@@ -120,13 +124,15 @@ trait PassadiXBee extends Passadi with StateServer with Log {
 
   override def close = stopAndWait
 
+  override def toString = id.getOrElse("unknown")
+
   protected def discardIfNoResponseSince(who: Set[XBeeAddress], t: TimePoint) = call { state =>
     val (old,na) = state.avieuls.span { e =>
       val (address, avst) = e
       who.contains(address) && avst.lastContact < t
     }
     old.keys.foreach_cps { a =>
-      log.info("Avieul with address {} did not respond to our requests, removing it", a)
+      log.info("Avieul with address {} did not respond to our requests, removing it.", a)
       fireListener(RemovedAvieul(proxy(a)))
     }
     val newState = state.copy(avieuls = na)
@@ -189,6 +195,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   protected [this] def markMaybeGone(address: XBeeAddress) = asyncCast { state =>
     state.avieuls.get(address) match {
       case Some(avst) =>
+        log.debug("Marking {} as maybe gone, trying to reach it", address)
         if (avst.notHeardFromIn > refreshTimeout) {
           val started = TimePoint.current
           state.xbee.send(address, RequestInfo())
@@ -223,7 +230,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
    * This class exists so that XBeeAvieul can be immutable.
    */
   protected class AvieulProxy(val address: XBeeAddress) extends Avieul {
-    override val id = address.toString
+    override val id = address.asHex
     override def services = get { state =>
       val res: Iterable[AvieulService] = state.avieuls.get(address) match {
         case Some(avst) => avst.avieul.services.toList
@@ -241,22 +248,24 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     }
     override def canEqual(that: Any) = that.isInstanceOf[AvieulProxy]
     override def hashCode = address.hashCode
-    override def toString = "Avieul("+address+")"
+    override def toString = "Avieul("+id+")"
   }
+
 
   /**
    * XBee that acts as an avieul.
    */
-  protected class XBeeAvieul(val address: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)], xbee: LocalXBee) {
+  protected class XBeeAvieul(adr: XBeeAddress, serviceDefs: Seq[(Byte,Int,Byte)], xbee: LocalXBee) {
+    val address = adr
     val services = serviceDefs.map { sd =>
       val (sindex, stype, sversion) = sd
       new XBeeAvieulService {
-        override val id = ""+address+"."+stype
+        override val id = adr.asHex+"."+stype
         override val serviceType = stype
         override val version = ServiceVersion(sversion)
         override val index = sindex
         override val xbee = XBeeAvieul.this.xbee
-        override val address = XBeeAvieul.this.address
+        override val address = adr
       }
     }
     def service(index: Byte): Option[XBeeAvieulService] = {
@@ -274,7 +283,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
         }.isEmpty
       } else false
     }
-    override def toString = "XBeeAvieul("+address+")"
+    override def toString = "XBeeAvieul("+address.asHex+")"
   }
 
   /**

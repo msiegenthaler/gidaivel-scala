@@ -102,6 +102,7 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
     case (Chat(_, thread, ChatXmlCommand("message", content), from),state) =>
       val msg = MessageSend(None, "other", from, jid, content)
       handleMessage(msg)
+      sendChatXml(from, thread, <forwarded />)
       state
     case (Chat(_, thread, ChatXmlCommand("probe", _), from),state) =>
       val xml = status(state).status

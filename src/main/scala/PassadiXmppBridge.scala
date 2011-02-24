@@ -6,6 +6,7 @@ import agents._
 import scalabase.process._
 import scalabase.time._
 import scalabase.oip._
+import scalabase.log._
 import scalaxmpp._
 import scalaxmpp.component._
 import net.liftweb.json._
@@ -15,7 +16,7 @@ import JsonAST._
 /**
  * Bridges a passadi and its avieuls to XMPP.
  */
-trait PassadiXmppBridge extends StateServer {
+trait PassadiXmppBridge extends StateServer with Log {
   protected val agentManager: AgentManager
   protected val passadi: Passadi
   protected val storage: JsonStorage
@@ -27,33 +28,40 @@ trait PassadiXmppBridge extends StateServer {
     agentManager.register("passadi", s => Spawner.start(new PassadiAgent(s, agentManager), SpawnAsRequiredChild))
 
     passadi.changeListener(onChange _)
-    val services = passadi.services.receiveWithin(10 s)
-    val agents = services.map_cps(registerService(_))
+    val avieuls = passadi.avieuls.receiveWithin(10 s)
+    val agents = avieuls.flatMap_cps(registerAvieul(_))
+    log.info("Passadi initialized with {} Avieul ({} AvieulServices)", avieuls.size, agents.size)
     State(agents.toList)
   }
 
   protected def onChange(change: PassadiChange): Unit @process = cast { state => 
     change match {
       case NewAvieul(avieul) =>
+        log.info("New Avieul added: {}", avieul.id)
         val added = reregisterAvieul(avieul)
         state.copy(agents = state.agents.filterNot(_.avieul == avieul) ++ added)
       case ChangedAvieul(avieul) =>
+        log.info("New Avieul updated: {}", avieul.id)
         val added = reregisterAvieul(avieul)
         state.copy(agents = state.agents.filterNot(_.avieul == avieul) ++ added)
       case RemovedAvieul(avieul) =>
+        log.info("Avieul removed: {}", avieul.id)
         val agents = agentsForAvieul(avieul)
         agents.foreach_cps(_.unregister)
         state.copy(agents = state.agents.filterNot(_.avieul == avieul))
     }
   }
-  private def reregisterAvieul(avieul: Avieul): Iterable[AgentSpecification] @process = {
+  private def reregisterAvieul(avieul: Avieul) = {
     val agents = agentsForAvieul(avieul)
     agents.foreach_cps(_.unregister)
-    val services = avieul.services.receiveWithin(10 s)
-    services.map_cps(registerService(_))
+    registerAvieul(avieul)
   }
-  private def registerService(service: AvieulService) = {
-    val agentSpec = mkAgentForService(service)
+  private def registerAvieul(avieul: Avieul) = {
+    val services = avieul.services.receiveWithin(10 s)
+    services.map_cps(registerService(avieul, _))
+  }
+  private def registerService(avieul: Avieul, service: AvieulService) = {
+    val agentSpec = mkAgentForService(avieul, service)
     agentManager.register(agentSpec.name, agentSpec)
     agentSpec
   }
@@ -74,11 +82,13 @@ trait PassadiXmppBridge extends StateServer {
     val avieulService: AvieulService
   }
 
-  protected def mkAgentForService(service: AvieulService): AgentSpecification = {
+  protected def mkAgentForService(avieul: Avieul, service: AvieulService): AgentSpecification = {
+    val a = avieul
     new AgentSpecification {
       override val name = service.id
+      override val avieul = a
+      override val avieulService = service
       override def apply(s: AgentServices) = {
-        val a = service.providedBy.receiveWithin(10 s)
         val strg = storage
         trait AgentBase extends AvieulAgent {
           protected val storage = strg
@@ -98,6 +108,8 @@ trait PassadiXmppBridge extends StateServer {
       }
     }
   }
+
+  private[PassadiXmppBridge] def agents = get(_.agents) 
 
   /** Agent for the passadi */
   protected class PassadiAgent(override val services: AgentServices, val manager: AgentManager) extends GidaivelAgent {
@@ -130,12 +142,20 @@ trait PassadiXmppBridge extends StateServer {
 
     protected val refreshAvieuls = mkMsg {
       case (FirstElem(ElemName("refresh", namespace)),state) =>
-        concurrent { passadi.refresh.receive; noop }
+        concurrent { 
+          log.debug("Refreshing the passadi")
+          passadi.refresh.receive
+          log.info("Passadi refreshed Avieuls")
+        }
         state
     }
     protected val listAvieuls = mkIqGet {
       case (get @ FirstElem(ElemName("query", "http://jabber.org/protocol/disco#items")),state) =>
-        // TODO state.agents (from the outer)
+        log.debug("Listing Avieuls..")
+        val agents = PassadiXmppBridge.this.agents.receiveOption(4 s)
+        val items = agents.getOrElse(Nil).map { a =>
+          <item jid={JID(a.name, services.jid.domain).stringRepresentation} name={"Avieul "+a.name} />
+        }
         (get.resultOk(<query xmlns="http://jabber.org/protocol/disco#items">{items}</query>), state)
     }
   }

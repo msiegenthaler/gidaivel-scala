@@ -4,6 +4,7 @@ package agents
 
 import scalabase.time._
 import scalabase.process._
+import scalabase.log._
 import scalaxmpp._
 import scalaxmpp.component._
 import net.liftweb.json._
@@ -14,7 +15,7 @@ import JsonAST._
  * Light that can be switched on or off.
  * See the documententation under /docs/devices.
  */
-trait OnOffLight extends AvieulBasedDevice {
+trait OnOffLight extends AvieulBasedDevice with Log {
   protected case class State(friends: Seq[JID], isOn: Boolean, unsubscribe: () => Unit @process) {
     def withFriends(friends: Seq[JID]) = copy(friends=friends)
     def persistent = PersistentState(friends.toList)
@@ -24,7 +25,8 @@ trait OnOffLight extends AvieulBasedDevice {
   protected override def init(stored: JValue) = {
     val ps = stored.extractOpt[PersistentState].getOrElse(PersistentState(Nil))
     val s = device_isOn.receiveWithin(timeout)
-    val unsub = avieulService.subscribe(0x0001, p => onChange(p == 0x01)).receiveWithin(timeout)
+    log.debug("The light isOn={} now", s)
+    val unsub = avieulService.subscribe(0x0001, p => onChange(p.head == 0x01)).receiveWithin(timeout)
     State(ps.friends, s, unsub)
   }
 
@@ -41,9 +43,11 @@ trait OnOffLight extends AvieulBasedDevice {
   }
   protected val turnOnOff = mkMsg {
     case (FirstElem(ElemName("turn-on", namespace)),state) =>
+      log.debug("Turn the light on")
       device_turnOnOff(true)
       state
     case (FirstElem(ElemName("turn-off", namespace)),state) =>
+      log.debug("Turn the light off")
       device_turnOnOff(false)
       state
   }
@@ -64,6 +68,7 @@ trait OnOffLight extends AvieulBasedDevice {
 
   /* called from the avieul subscription */
   private def onChange(newOn: Boolean) = cast { state =>
+    log.debug("The light changed to isOn={}", newOn)
     if (state.isOn == newOn) state
     else {
       announce

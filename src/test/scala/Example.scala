@@ -19,8 +19,10 @@ object Example {
     println("## "+self)
     val domain = "gidaivel"
     val secret = Some("secret")
-    val port = "/dev/cu.usbserial-A6003ThW"
+    val portName = "/dev/cu.usbserial-A6003ThW"
     val portSpeed = 19200
+
+    val port = SerialPort.forName(portName).get
 
     object AllowAll extends AuthorizedMembership {
       override def isAllowed(jid: JID) = {
@@ -33,35 +35,8 @@ object Example {
 
     val server = XMPPComponentServer.tcp("localhost", 5275, None)
 
-
-/*
-    class AboutAgent(override protected val services: AgentServices, manager: AgentManager) extends GidaivelAgent {
-      protected case class State(friends: Seq[JID]) {
-        def withFriends(friends: Seq[JID]) = copy(friends=friends)
-        def persistent = this
-      }
-      protected override type PersistentState = State
-
-      protected override def init(stored: JValue) = {
-        val s = stored.extractOpt[PersistentState].getOrElse(State(Nil))
-        s
-      }
-      protected override val storage = Storage
-      protected override def isAllowed(jid: JID) = AllowAll.isAllowed(jid)
-      protected override val stateless = new ComponentInfoAgent {
-        override val services = AboutAgent.this.services
-        override val manager = AboutAgent.this.manager
-      }
-    }
-    val spec = AgentComponent.specification("Gidaivel", "Gidaivel component", domain, secret) { am =>
-      am.register("about", s => Spawner.start(new AboutAgent(s, am), SpawnAsRequiredChild))
-    }
-    server.register(spec)
-*/
-
-
     val psa = PassadiXBee({
-      val portDesc = SerialPort.forName(port).get
+      val portDesc = port
       val serialPort = portDesc.open(portSpeed)(SpawnAsRequiredChild)
       val lowlevel =  LocalLowLevelXBeeInApiModePort(serialPort).receive
       LocalSeries1XBee(lowlevel)
@@ -78,6 +53,3 @@ object Example {
     server.register(spec)
   }
 }
-
-
-
