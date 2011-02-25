@@ -9,6 +9,7 @@ import scalaxmpp._
 import scalaxmpp.component._
 import net.liftweb.json._
 import JsonAST._
+import JsonDSL._
 
 
 
@@ -28,11 +29,10 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
   def jid = services.jid
   def name = jid.node
 
-  protected type PersistentState
   protected override type State <: {
     def friends: Seq[JID]
     def withFriends(friends: Seq[JID]): State
-    def persistent: PersistentState
+    def persistent: JValue
   }
 
   protected def storage: JsonStorage
@@ -46,8 +46,9 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
   protected def saveState = cast { state => 
     spawnChild(NotMonitored) {
       log.debug("Saving the state of {}", jid)
-      val ser = serializeState(state)
-      storeToStorage(ser)
+      val ps = state.persistent
+      log.trace("Saved state of {} is {}", jid, ps)
+      storeToStorage(ps)
     }
     state
   }
@@ -55,25 +56,15 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
   protected override final def init = {
     val stored = loadFromStorage
     log.trace("Loaded state for {}: {}", jid, stored)
-    val stored2 = stored match {
-      case JNull => JArray(Nil) // Null parses to good (null values)
-      case other => other
-    }
-    init(stored2)
+    init(stored)
   }
 
   /** Initialization (start of the agent) */
-  protected def init(stateInStore: JValue): State @process
-  protected implicit val formats = DefaultFormats
-  /** Serialize the state to a Json */
-  protected def serializeState(state: State): JValue @process = {
-    val persistent = state.persistent
-    Extraction.decompose(persistent)
-  }
+  protected def init(loadedState: JValue): State @process
 
   protected override def termination(state: State) = {
     super.termination(state)
-    storeToStorage(serializeState(state))
+    storeToStorage(state.persistent)
   }
 
   protected override def message(state: State) =
@@ -168,3 +159,31 @@ private object ChatXmlCommand {
 }
 
 case class XmppIdentity(category: String, typ: String, name: Option[String]=None)
+
+
+/** Utilities for Json serialization and parsing */
+object Json {
+  import JsonDSL._
+
+  trait JsonMapper[T] {
+    def parse(from: JValue): Option[T]
+    def serialize(value: T): JValue
+  }
+
+  def seqOf[T](mapper: JsonMapper[T]): JsonMapper[Seq[T]] = new JsonMapper[Seq[T]] {
+    override def parse(from: JValue) = from match {
+      case JArray(list) => Some(list.flatMap(mapper.parse(_)))
+      case other => None
+    }
+    override def serialize(values: Seq[T]) = JArray(values map(mapper.serialize(_)) toList)
+  }
+
+
+  object Jid extends JsonMapper[JID] {
+    override def parse(from: JValue) = from match {
+      case JString(value) => JID.parseOption(value)
+      case _ => None
+    }
+    override def serialize(value: JID) = value.stringRepresentation
+  }
+}

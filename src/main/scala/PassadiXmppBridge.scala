@@ -11,6 +11,8 @@ import scalaxmpp._
 import scalaxmpp.component._
 import net.liftweb.json._
 import JsonAST._
+import JsonDSL._
+import Json._
 
 
 /**
@@ -115,14 +117,14 @@ trait PassadiXmppBridge extends StateServer with Log {
   protected class PassadiAgent(override val services: AgentServices, val manager: AgentManager) extends GidaivelAgent {
     protected case class State(friends: Seq[JID]) {
       def withFriends(friends: Seq[JID]) = copy(friends=friends)
-      def persistent = this
-    }
-    protected override type PersistentState = State
+      def persistent: JValue = seqOf(Jid).serialize(friends)
+   }
 
     protected override val storage = PassadiXmppBridge.this.storage
     protected override def isAllowed(jid: JID) = authorized.isAllowed(jid)
     protected override def init(stored: JValue) = {
-      stored.extractOpt[PersistentState].getOrElse(State(Nil))
+      val f = seqOf(Jid).parse(stored).getOrElse(Nil)
+      State(f)
     }
 
     protected override val stateless = new ComponentInfoAgent {
@@ -186,10 +188,11 @@ object PassadiXmppBridge {
 trait UnknownAvieulBasedDevice extends AvieulBasedDevice {
   protected case class State(friends: Seq[JID]) {
     def withFriends(friends: Seq[JID]) = copy(friends=friends)
-    def persistent = this
+    def persistent: JValue = seqOf(Jid).serialize(friends)
   }
   protected type PersistentState = State
   protected override def init(stored: JValue) = {
-    stored.extractOpt[PersistentState].getOrElse(State(Nil))
+    val f = seqOf(Jid).parse(stored).getOrElse(Nil)
+    State(f)
   }
 }

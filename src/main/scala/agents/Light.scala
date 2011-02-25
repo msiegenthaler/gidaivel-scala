@@ -2,14 +2,16 @@ package ch.inventsoft
 package gidaivel
 package agents
 
+import scala.collection.immutable.Set
 import scalabase.time._
 import scalabase.process._
 import scalabase.log._
 import scalaxmpp._
 import scalaxmpp.component._
 import net.liftweb.json._
+import JsonDSL._
 import JsonAST._
-
+import Json._
 
 /**
  * Light that can be switched on or off.
@@ -18,16 +20,15 @@ import JsonAST._
 trait OnOffLight extends AvieulBasedDevice with Log {
   protected case class State(friends: Seq[JID], isOn: Boolean, unsubscribe: () => Unit @process) {
     def withFriends(friends: Seq[JID]) = copy(friends=friends)
-    def persistent = PersistentState(friends.toList)
+    def persistent: JValue = seqOf(Jid).serialize(friends)
   }
-  protected case class PersistentState(friends: List[JID])
 
   protected override def init(stored: JValue) = {
-    val ps = stored.extractOpt[PersistentState].getOrElse(PersistentState(Nil))
+    val f = seqOf(Jid).parse(stored).getOrElse(Nil)
     val s = device_isOn.receiveWithin(timeout)
     log.debug("The light isOn={} now", s)
     val unsub = avieulService.subscribe(0x0001, p => onChange(p.head == 0x01)).receiveWithin(timeout)
-    State(ps.friends, s, unsub)
+    State(f, s, unsub)
   }
 
   protected override def iqGet(state: State) = super.iqGet(state) :+ isOn
