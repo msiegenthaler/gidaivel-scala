@@ -24,20 +24,25 @@ trait PassadiXmppBridge extends StateServer with Log {
   protected val storage: JsonStorage
   protected val authorized: AuthorizedMembership
 
-  protected case class State(agents: Iterable[AgentSpecification])
+  protected case class State(agents: Iterable[AgentSpecification], passadiAgent: Option[PassadiAgent])
 
   protected override def init = {
-    agentManager.register("passadi", s => Spawner.start(new PassadiAgent(s, agentManager), SpawnAsRequiredChild))
+    val passadiAgent = 
+    agentManager.register("passadi", s => {
+      val pa = new PassadiAgent(s, agentManager)
+      spawn { cast(_.copy(passadiAgent=Some(pa))) }
+      pa
+    })
 
     passadi.changeListener(onChange _)
-    val avieuls = passadi.avieuls.receiveWithin(10 s)
+    val avieuls: Iterable[Avieul] = passadi.avieuls.receiveWithin(10 s)
     val agents = avieuls.flatMap_cps(registerAvieul(_))
     log.info("Passadi initialized with {} Avieul ({} AvieulServices)", avieuls.size, agents.size)
-    State(agents.toList)
+    State(agents.toList, None)
   }
 
-  protected def onChange(change: PassadiChange): Unit @process = cast { state => 
-    change match {
+  protected def onChange(change: PassadiChange): Unit @process = cast { state =>
+    val s = change match {
       case NewAvieul(avieul) =>
         log.info("New Avieul added: {}", avieul.id)
         val added = reregisterAvieul(avieul)
@@ -52,6 +57,8 @@ trait PassadiXmppBridge extends StateServer with Log {
         agents.foreach_cps(_.unregister)
         state.copy(agents = state.agents.filterNot(_.avieul == avieul))
     }
+    state.passadiAgent.foreach_cps(_.agentsUpdated(state.agents))
+    s
   }
   private def reregisterAvieul(avieul: Avieul) = {
     val agents = agentsForAvieul(avieul)
@@ -78,7 +85,7 @@ trait PassadiXmppBridge extends StateServer with Log {
   protected trait AvieulAgent extends AvieulBasedDevice {
     private[PassadiXmppBridge] def unregister: Unit @process
   }
-  protected trait AgentSpecification extends Function1[AgentServices,Agent @process] {
+  protected trait AgentSpecification extends Function1[AgentServices,Agent] {
     val name: String
     val avieul: Avieul
     val avieulService: AvieulService
@@ -98,15 +105,14 @@ trait PassadiXmppBridge extends StateServer with Log {
           override val avieulService = service
           protected val services = s
           protected override def isAllowed(jid: JID) = authorized.isAllowed(jid)
-          override private[PassadiXmppBridge] def unregister = services.unregister
+          override private[PassadiXmppBridge] def unregister = services.unregister.receiveWithin(5 minutes)
         }
-        val agent = service match {
+        service match {
           case AvieulService(0x00000012, _) => 
             new OnOffLight with AgentBase
           case _ =>
             new UnknownAvieulBasedDevice with AgentBase
         }
-        Spawner.start(agent, SpawnAsRequiredChild)
       }
     }
   }
@@ -114,8 +120,9 @@ trait PassadiXmppBridge extends StateServer with Log {
   private[PassadiXmppBridge] def agents = get(_.agents) 
 
   /** Agent for the passadi */
-  protected class PassadiAgent(override val services: AgentServices, val manager: AgentManager) extends GidaivelAgent {
-    protected case class State(friends: Seq[JID]) {
+  protected class PassadiAgent(override val services: AgentServices, val manager: AgentManager)
+            extends GidaivelAgent with ComponentInfoAgent {
+    protected case class State(friends: Seq[JID], agents: Iterable[AgentSpecification]) {
       def withFriends(friends: Seq[JID]) = copy(friends=friends)
       def persistent: JValue = seqOf(Jid).serialize(friends)
    }
@@ -124,16 +131,12 @@ trait PassadiXmppBridge extends StateServer with Log {
     protected override def isAllowed(jid: JID) = authorized.isAllowed(jid)
     protected override def init(stored: JValue) = {
       val f = seqOf(Jid).parse(stored).getOrElse(Nil)
-      State(f)
+      val agents = PassadiXmppBridge.this.agents.receive
+      State(f, agents)
     }
 
-    protected override val stateless = new ComponentInfoAgent {
-      override val services = PassadiAgent.this.services
-      override val manager = PassadiAgent.this.manager
-    }
-    
-    protected override def message(state: State) = super.message(state) :+ refreshAvieuls
-    protected override def iqGet(state: State) = super.iqGet(state) :+ listAvieuls
+    protected override def message = super.message :+ refreshAvieuls
+    protected override def iqGet = super.iqGet :+ listAvieuls
     protected val namespace = "urn:gidaivel:passadi"
     
     protected override def features = super.features :+ namespace
@@ -142,23 +145,29 @@ trait PassadiXmppBridge extends StateServer with Log {
       super.identities :+ XmppIdentity("gateway", "gidaivel-passadi") :+ XmppIdentity("gidaivel", "passadi", Some(n))
     }
 
+    def agentsUpdated(agents: Iterable[AgentSpecification]) = cast { state =>
+      announce
+      state.copy(agents=agents)
+    }
+
+    protected override def status(state: State) = {
+      val msg = "Passadi with " + state.agents.size + " avieuls"
+      val s = <show>chat></show><status>{msg}</status>;
+      Status(s)
+    }
     protected val refreshAvieuls = mkMsg {
       case (FirstElem(ElemName("refresh", namespace)),state) =>
-        concurrent { 
-          log.debug("Refreshing the passadi")
-          passadi.refresh.receive
-          log.info("Passadi refreshed Avieuls")
-        }
-        state
+        log.debug("Refreshing the passadi")
+        passadi.refresh.receive
+        log.info("Passadi refreshed Avieuls")
     }
     protected val listAvieuls = mkIqGet {
       case (get @ FirstElem(ElemName("query", "http://jabber.org/protocol/disco#items")),state) =>
         log.debug("Listing Avieuls..")
-        val agents = PassadiXmppBridge.this.agents.receiveOption(4 s)
-        val items = agents.getOrElse(Nil).map { a =>
+        val items = state.agents.map { a =>
           <item jid={JID(a.name, services.jid.domain).stringRepresentation} name={"Avieul "+a.name} />
         }
-        (get.resultOk(<query xmlns="http://jabber.org/protocol/disco#items">{items}</query>), state)
+        get.resultOk(<query xmlns="http://jabber.org/protocol/disco#items">{items}</query>)
     }
   }
 }

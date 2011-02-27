@@ -24,7 +24,7 @@ trait AvieulBasedDevice extends GidaivelAgent {
   protected override def features = super.features :+ namespace
   protected override def identities = super.identities :+ XmppIdentity("gidaivel", "avieul", Some(avieul.id))
 
-  protected override def iqGet(state: State) = super.iqGet(state) :+ info :+ signal
+  protected override def iqGet = super.iqGet :+ info :+ signal
 
   protected val info = mkIqGet {
     case (get @ FirstElem(ElemName("info", namespace)),state) =>
@@ -36,7 +36,7 @@ trait AvieulBasedDevice extends GidaivelAgent {
           <type>{st}</type>
           <version>{sv}</version>
         </avieul-service></info>
-      (get.resultOk(xml), state)
+      get.resultOk(xml)
   }
   protected val signal = mkIqGet {
     case (get @ FirstElem(ElemName("signal", namespace)),state) =>
@@ -48,10 +48,10 @@ trait AvieulBasedDevice extends GidaivelAgent {
             <avieul>{an}</avieul>
             <signal-quality><percent>{status.quality.percentage}</percent></signal-quality>
             <last-contact>{status.lastContact.asXmlDateTime}</last-contact></info>
-          (get.resultOk(xml), state)
+          get.resultOk(xml)
         case None =>
           val xml = <info xmlns={namespace}><unknown/></info>
-          (get.resultOk(xml), state)
+          get.resultOk(xml)
       }
   }
 }

@@ -67,9 +67,8 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
     storeToStorage(state.persistent)
   }
 
-  protected override def message(state: State) =
-    super.message(state) :+ chatToIq
-  protected override def iqGet(state: State) = super.iqGet(state) :+ discoInfo
+  protected override def message = super.message :+ chatToIq
+  protected override def iqGet = super.iqGet :+ discoInfo
 
   /**
    * Basically a debugging over chat.
@@ -78,32 +77,23 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
   protected val chatToIq = mkMsg {
     case (Chat(_, thread, ChatXmlCommand("iqget", content), from),state) =>
       val get = IQGet("X", from, jid, content)
-      concurrent {
-        val resp = handleIQ(get).receiveOption(10 s)
-        sendChatXml(from, thread, resp.map(_.xml.child).getOrElse(<unknown/>))
-      }
-      state
+      val resp = handleIQ(get).receiveOption(10 s)
+      sendChatXml(from, thread, resp.map(_.xml.child).getOrElse(<unknown/>))
     case (Chat(_, thread, ChatXmlCommand("iqset", content), from),state) =>
       val set = IQSet("X", from, jid, content)
-      concurrent {
-        val resp = handleIQ(set).receiveOption(10 s)
-        sendChatXml(from, thread, resp.map(_.xml.child).getOrElse(<unknown/>))
-      }
-      state
+      val resp = handleIQ(set).receiveOption(10 s)
+      sendChatXml(from, thread, resp.map(_.xml.child).getOrElse(<unknown/>))
     case (Chat(_, thread, ChatXmlCommand("message", content), from),state) =>
       val msg = MessageSend(None, "other", from, jid, content)
       handleMessage(msg)
       sendChatXml(from, thread, <forwarded />)
-      state
     case (Chat(_, thread, ChatXmlCommand("probe", _), from),state) =>
       val xml = status(state).status
       sendChatXml(from, thread, xml)
-      state
   }
   private def sendChatXml(to: JID, thread: Option[String], xml: NodeSeq): Unit @process = {
     val string = xml.toString
-    services.send(Chat(None, thread, string, to, jid)).receiveOption(5 s)
-    ()
+    services.send(Chat(None, thread, string, to, jid)).receive
   }
 
   protected val discoInfo = mkIqGet {
@@ -113,14 +103,14 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
         if (i.name.isDefined) <identity category={i.category} type={i.typ} name={i.name.get} />
         else <identity category={i.category} type={i.typ} />                                
       }
-      (get.resultOk(<query xmlns="http://jabber.org/protocol/disco#info">{fs ++ ids}</query>), state)
+      get.resultOk(<query xmlns="http://jabber.org/protocol/disco#info">{fs ++ ids}</query>)
   }
 
   /** supported features */
   protected def features: Seq[String] = "http://jabber.org/protocol/disco#info" :: "urn:gidaivel:base" :: Nil
   protected def identities: Seq[XmppIdentity] = XmppIdentity("gidaivel", "device") :: Nil
 
-  protected override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+  protected override def acceptSubscription(from: JID, content: NodeSeq)(state: State) = {
     log.trace("{} is asked to accept subscription from {}", jid, from)
     if (isAllowed(from)) {
       val f = state.friends :+ from
@@ -128,7 +118,7 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
       state.withFriends(f)
     } else state
   }
-  protected override def removeSubscription(state: State)(from: JID) = {
+  protected override def removeSubscription(from: JID)(state: State) = {
     val f = state.friends.filterNot(_ == from)
     if (f.length < state.friends.length) {
       saveState

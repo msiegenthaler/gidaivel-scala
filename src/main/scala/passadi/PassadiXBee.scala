@@ -192,7 +192,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
    * If we could not send data to an xbee then try to reach it and if it does
    * not respond within the refreshTimeout remove it from the list.
    */
-  protected [this] def markMaybeGone(address: XBeeAddress) = asyncCast { state =>
+  protected [this] def markMaybeGone(address: XBeeAddress) = concurrent { state =>
     state.avieuls.get(address) match {
       case Some(avst) =>
         log.debug("Marking {} as maybe gone, trying to reach it", address)

@@ -31,8 +31,8 @@ trait OnOffLight extends AvieulBasedDevice with Log {
     State(f, s, unsub)
   }
 
-  protected override def iqGet(state: State) = super.iqGet(state) :+ isOn
-  protected override def message(state: State) = super.message(state) :+ turnOnOff
+  protected override def iqGet = super.iqGet :+ isOn
+  protected override def message = super.message :+ turnOnOff
 
   val namespace = "urn:gidaivel:lights:onOff"
   protected override def features = super.features :+ namespace
@@ -40,17 +40,15 @@ trait OnOffLight extends AvieulBasedDevice with Log {
   protected val isOn = mkIqGet {
     case (get @ FirstElem(ElemName("is-on", namespace)),state) =>
       val res = <is-on xmlns={namespace}>{if (state.isOn) <on/> else <off/>}</is-on>
-      (get.resultOk(res), state)
+      get.resultOk(res)
   }
   protected val turnOnOff = mkMsg {
     case (FirstElem(ElemName("turn-on", namespace)),state) =>
       log.debug("Turn the light on")
       device_turnOnOff(true)
-      state
     case (FirstElem(ElemName("turn-off", namespace)),state) =>
       log.debug("Turn the light off")
       device_turnOnOff(false)
-      state
   }
   private def device_turnOnOff(on: Boolean) = {
     val status: Byte = if (on) 1 else 0
