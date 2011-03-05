@@ -72,7 +72,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
                 val avst = AvieulState(avieul, ss)
                 val na = state.avieuls.updated(from, avst)
                 fireListener(ChangedAvieul(proxy(avieul.address)))
-                Some(state.copy(avieuls=na))
+                Some(state.copy(avieuls=na).distributeAndUpdate(packet, avst))
               } else {
                 //unchanged
                 val newState = state.distributeAndUpdate(packet, avst)
@@ -84,7 +84,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
               val avst = AvieulState(avieul, ss)
               val na = state.avieuls.updated(from, avst)
               fireListener(NewAvieul(proxy(avieul.address)))
-              Some(state.copy(avieuls=na))
+              Some(state.copy(avieuls=na).distributeAndUpdate(packet, avst))
           }
         case otherData => state.avieuls.get(from) match {
           case Some(avst) =>
