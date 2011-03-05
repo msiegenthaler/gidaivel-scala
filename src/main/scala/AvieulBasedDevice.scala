@@ -25,6 +25,7 @@ trait AvieulBasedDevice extends GidaivelAgent {
   protected override def identities = super.identities :+ XmppIdentity("gidaivel", "avieul", Some(avieul.id))
 
   protected override def iqGet = super.iqGet :+ info :+ signal
+  protected override def message = super.message :+ resync
 
   protected val info = mkIqGet {
     case (get @ FirstElem(ElemName("info", namespace)),state) =>
@@ -54,4 +55,9 @@ trait AvieulBasedDevice extends GidaivelAgent {
           get.resultOk(xml)
       }
   }
+  protected val resync = mkMsg {
+    case (FirstElem(ElemName("resync", namespace)),state) =>
+      doResync
+  }
+  protected def doResync: Unit @process = noop
 }

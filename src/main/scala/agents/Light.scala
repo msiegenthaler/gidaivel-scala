@@ -30,6 +30,10 @@ trait OnOffLight extends AvieulBasedDevice with Log {
     val unsub = avieulService.subscribe(0x0001, p => onChange(p.head == 0x01)).receiveWithin(timeout)
     State(f, s, unsub)
   }
+  protected override def doResync = concurrent { state =>
+    val on = device_isOn.receiveOption(1 minute).getOrElse(false)
+    atomic(_.copy(isOn = on))
+  }
 
   protected override def iqGet = super.iqGet :+ isOn
   protected override def message = super.message :+ turnOnOff

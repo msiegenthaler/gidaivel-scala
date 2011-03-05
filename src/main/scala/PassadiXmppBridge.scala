@@ -57,7 +57,7 @@ trait PassadiXmppBridge extends StateServer with Log {
         agents.foreach_cps(_.unregister)
         state.copy(agents = state.agents.filterNot(_.avieul == avieul))
     }
-    state.passadiAgent.foreach_cps(_.agentsUpdated(state.agents))
+    s.passadiAgent.foreach_cps(_.agentsUpdated(s.agents))
     s
   }
   private def reregisterAvieul(avieul: Avieul) = {
@@ -152,7 +152,7 @@ trait PassadiXmppBridge extends StateServer with Log {
 
     protected override def status(state: State) = {
       val msg = "Passadi with " + state.agents.size + " avieuls"
-      val s = <show>chat></show><status>{msg}</status>;
+      val s = <show>chat</show><status>{msg}</status>;
       Status(s)
     }
     protected val refreshAvieuls = mkMsg {
