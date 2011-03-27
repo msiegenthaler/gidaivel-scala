@@ -186,6 +186,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
       //Stop the subscription manager since nobody is interested in that anymore
       log.trace("No more subscriptions for manager {}. Terminating it.", sub.key)
       s1.subMgrs.get(sub.key).foreach_cps(_.terminate)
+      log.debug("Terminated subscription manager {}", sub.key)
       s1.copy(subMgrs = s1.subMgrs - sub.key)
     } else s1
   }}

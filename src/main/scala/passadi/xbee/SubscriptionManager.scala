@@ -43,17 +43,19 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
   protected override def body = {
     log.trace("Establishing subscription {}", key)
     def runLoop: Unit @process = {
-      subscribeWithRetry
-      log.debug("Subscription {} has been set up", key)
-      if (run) {
-        log.trace("Reestablishing subscription {}", key)
-        runLoop
+      if (subscribeWithRetry) {
+        log.debug("Subscription {} has been set up", key)
+        if (run) {
+          log.trace("Reestablishing subscription {}", key)
+          runLoop
+        } else noop
       } else noop
     }
     runLoop
     unsubscribe
   }
 
+  protected val retryTimeout = 1 minute
   protected def subscribeWithRetry: Boolean @process = {
     emptyMsgs
     val r = subscribe
@@ -61,19 +63,25 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
       case Successful => noop; true
       case Failed =>
         log.trace("Could not setup {}. Retrying", key)
-        receive {
+        receiveWithin(retryTimeout) {
           case XBeeMessage(key.xbee, AnnounceServices(_, _)) => subscribeWithRetry
-          case Terminate => noop; false
+          case TerminationRequest(from) =>
+            from ! Terminate
+            log.trace("Termination request for SubscriptionManager {} while retrying", key)
+            false
           case Timeout => subscribeWithRetry
-          case other => noop; false
         }
       case UnknownSubOrService =>
         log.trace("Could not setup {} because service or subscriptionType is unknown. Retrying..", key)
         receive {
           case XBeeMessage(key.xbee, AnnounceServices(_, _)) => subscribeWithRetry
-          case Terminate => noop; false
-          case Timeout => subscribeWithRetry
+          case TerminationRequest(from) =>
+            from ! Terminate
+            log.trace("Termination request for SubscriptionManager {} while retrying", key)
+            false
         }
+      case TerminationRequested =>
+        noop; false
     }
   }
 
@@ -87,6 +95,10 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
           UnknownSubOrService
         case XBeeMessage(key.xbee, ServiceUnknown(key.serviceIndex, _)) =>
           UnknownSubOrService
+        case TerminationRequest(from) =>
+          from ! Terminate
+          log.trace("Termination request for SubscriptionManager {} while trying to set up connection", key)
+          TerminationRequested
         case Timeout =>
           Failed
       }
@@ -100,14 +112,16 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
   protected object Successful extends SubscriptionResult
   protected object Failed extends SubscriptionResult
   protected object UnknownSubOrService extends SubscriptionResult
+  protected object TerminationRequested extends SubscriptionResult
 
   protected def unsubscribe = {
-    log.debug("Subscription {} has been stopped", key)
+    log.debug("Subscription {} has been stopped (sending unsubscribe to xbee)", key)
     xbee.send(key.xbee, ServiceUnsubscribe(key.serviceIndex, key.subscription))
   }
 
   protected def run: Boolean @process = receive {
-    case Terminate =>
+    case TerminationRequest(sender) =>
+      sender ! Terminate
       log.trace("Termination request for SubscriptionManager {}", key)
       false
     case XBeeMessage(key.xbee, ServicePublish((key.serviceIndex, key.subscription, data), _)) =>
@@ -118,10 +132,13 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
       // renew subscription
       log.debug("Refreshing subscription since xbee has reannounced itself")
       true
-    case other => run
+    case other =>
+      log.trace("Unknown message received: {}", other)
+      run
   }
 
   protected def send(data: Seq[Byte]): TransmitStatus @process = {
+    log.debug("Sending subscribe for {} to xbee", key)
     val selector = xbee.sendTracked(key.xbee, data)
     val res = receiveWithin(sendTimeout)(selector.option).getOrElse(TransmitStatusNoAckReceived)
     if (res == TransmitStatusNoAckReceived) onNoAckReceived
@@ -132,6 +149,31 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
     case something => emptyMsgs
   }
 
-  override def terminate = process ! Terminate
+  override def terminate = {
+    val caller = self
+    val notification = new Object
+    spawnChild(Required) {
+      watch(process)
+      process ! TerminationRequest(self)
+      receiveWithin(2 s) {
+        case Terminate => //wait until terminated
+          receiveWithin(2 minutes) {
+            case ProcessEnd(this.process) =>
+              ()
+            case Timeout =>
+              log.info("Gave up waiting for termination of subscription manager {}..", key)
+          }
+          caller ! notification
+        case Timeout => // probably already terminated
+          log.debug("Could not correctly shut down subscription manager {}, it did not respond", key)
+          caller ! notification
+      } 
+    }
+    receive {
+      case `notification` => //ok, terminated
+    }
+  }
+  protected case class TerminationRequest(from: Process)
+
   override def handlerProcess = process
 }
