@@ -6,6 +6,7 @@ import scala.collection.immutable.Set
 import scalabase.time._
 import scalabase.process._
 import scalabase.log._
+import scalabase.oip._
 import scalaxmpp._
 import scalaxmpp.component._
 import net.liftweb.json._
@@ -18,20 +19,24 @@ import Json._
  * See the documententation under /docs/devices.
  */
 trait OnOffLight extends AvieulBasedDevice with Log {
-  protected case class State(friends: Seq[JID], isOn: Boolean, unsubscribe: () => Unit @process) {
+  protected case class State(friends: Seq[JID], isOn: Boolean) {
     def withFriends(friends: Seq[JID]) = copy(friends=friends)
     def persistent: JValue = seqOf(Jid).serialize(friends)
   }
 
   protected override def init(stored: JValue) = {
     val f = seqOf(Jid).parse(stored).getOrElse(Nil)
-    val s = device_isOn.receiveWithin(timeout)
+    val s = device_isOn
     log.debug("The light isOn={} now", s)
-    val unsub = avieulService.subscribe(0x0001, p => onChange(p.head == 0x01)).receiveWithin(timeout)
-    State(f, s, unsub)
+    ResourceManager[Unsubscribe](
+      resource = device.subscribe(0x0001, p => onChange(p.head==0x01)),
+      close = unsub => unsub()
+    ).receive
+    State(f, s)
   }
+  override def shutdown = stopAndWait.receive
   protected override def doResync = concurrent { state =>
-    val on = device_isOn.receiveOption(1 minute).getOrElse(false)
+    val on = device_isOn
     atomic(_.copy(isOn = on))
   }
 
@@ -56,8 +61,7 @@ trait OnOffLight extends AvieulBasedDevice with Log {
   }
   private def device_turnOnOff(on: Boolean) = {
     val status: Byte = if (on) 1 else 0
-    avieulService.call(0x0001, status :: Nil)
-    noop
+    device.call(0x0001, status :: Nil)
   }
 
   protected override def status(state: State) = {
@@ -79,16 +83,5 @@ trait OnOffLight extends AvieulBasedDevice with Log {
     }
   }
   /* ask the device whether it's turned on or off */
-  protected def device_isOn = {
-    val sel = avieulService.request(0x0001, Nil)
-    sel.map_cps { _ match {
-      case Left(status) if status.length>0 =>
-        noop
-        status.head == 0x01
-      case Left(_) =>
-        throw new RuntimeException("missing result")
-      case Right(error) =>
-        throw new RuntimeException(error.toString)
-    }}
-  }
+  protected def device_isOn = device.request(0x0001).head == 0x01
 }

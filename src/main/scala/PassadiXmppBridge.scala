@@ -34,21 +34,21 @@ trait PassadiXmppBridge extends StateServer with Log {
       pa
     })
 
-    passadi.changeListener(onChange _)
     val avieuls: Iterable[Avieul] = passadi.avieuls.receiveWithin(10 s)
     val agents = avieuls.flatMap_cps(registerAvieul(_))
     log.info("Passadi initialized with {} Avieul ({} AvieulServices)", avieuls.size, agents.size)
+    passadi.changeListener(onChange _)
     State(agents.toList, None)
   }
 
   protected def onChange(change: PassadiChange): Unit @process = cast { state =>
     val s = change match {
       case NewAvieul(avieul) =>
-        log.info("New Avieul added: {}", avieul.id)
+        log.info("Avieul added: {}", avieul.id)
         val added = reregisterAvieul(avieul)
         state.copy(agents = state.agents.filterNot(_.avieul == avieul) ++ added)
       case ChangedAvieul(avieul) =>
-        log.info("New Avieul updated: {}", avieul.id)
+        log.info("Avieul updated: {}", avieul.id)
         val added = reregisterAvieul(avieul)
         state.copy(agents = state.agents.filterNot(_.avieul == avieul) ++ added)
       case RemovedAvieul(avieul) =>
@@ -109,8 +109,13 @@ trait PassadiXmppBridge extends StateServer with Log {
         }
         service match {
           case AvieulService(0x00000012, _) => 
+            log.debug("Creating OnOffLight for {}", service.id)
             new OnOffLight with AgentBase
+          case AvieulService(0x00000010, _) =>
+            log.debug("Creating IRReceiver for {}", service.id)
+            new IRReceiver with AgentBase
           case _ =>
+            log.debug("Creating UnknownAvieulBasedDevice for {}", service.id)
             new UnknownAvieulBasedDevice with AgentBase
         }
       }

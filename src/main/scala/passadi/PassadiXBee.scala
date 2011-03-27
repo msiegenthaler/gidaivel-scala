@@ -152,12 +152,16 @@ trait PassadiXBee extends Passadi with StateServer with Log {
 
   protected def internalSubscribe(sub: Subscription) = call { state => {
     val subs = sub :: state.subscriptions
+    log.trace("New Subscription for {} (total {} for this)", sub.key, subs.find(_.key==sub.key).size)
     val s1 = state.copy(subscriptions=subs)
       
     val s2 = {
-      if (s1.subMgrs.contains(sub.key)) s1
-      else {
+      if (s1.subMgrs.contains(sub.key)) {
+        log.trace("Already a subscription manager for {}", sub.key)
+        s1
+      } else {
         //Setup subscription manager
+        log.trace("Need to set up a new subscription manager for {}", sub.key)
         val mgr = XBeeSubscriptionManager(sub.key, state.xbee)
         val dist = s1.distributor.add(sub.key.xbee)(mgr.handlerProcess)
         val nsm = s1.subMgrs.updated(sub.key, mgr)
@@ -170,9 +174,11 @@ trait PassadiXBee extends Passadi with StateServer with Log {
   }}
   protected def internalUnsubscribe(sub: Subscription) = cast { state => {
     val subs = state.subscriptions.filterNot(_ == sub)
+    log.trace("Unsubscribe for {} ({} left for this key)", sub.key, subs.find(_.key==sub.key).size)
     val s1 = state.copy(subscriptions=subs)
     if (s1.subscriptions.find(_.key == sub.key).isEmpty) {
       //Stop the subscription manager since nobody is interested in that anymore
+      log.trace("No more subscriptions for manager {}. Terminating it.", sub.key)
       s1.subMgrs.get(sub.key).foreach_cps(_.terminate)
       s1.copy(subMgrs = s1.subMgrs - sub.key)
     } else s1
@@ -422,12 +428,14 @@ trait PassadiXBee extends Passadi with StateServer with Log {
    */
   protected class XBeeSubscriptionManager protected(override val key: SubscriptionKey, xbee: LocalXBee) extends SubscriptionManager with Spawnable {
     protected override def body = {
+      log.trace("Establishing subscription {}", key)
       def runLoop: Unit @process = {
-        log.trace("Establishing subscription {}", key)
         subscribeWithRetry
         log.debug("Subscription {} has been set up", key)
-        if (run) runLoop
-        else noop
+        if (run) {
+          log.trace("Reestablishing subscription {}", key)
+          runLoop
+        } else noop
       }
       runLoop
       unsubscribe
@@ -457,7 +465,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     protected def subscribe: SubscriptionResult @process = {
       val sent = send(ServiceSubscribe(key.serviceIndex, key.subscription))
       if (sent.isSuccess) {
-        receiveWithin(1 minute) {
+        receiveWithin(5 s) {
           case XBeeMessage(key.xbee, ServiceSubscriptionConfirm((key.serviceIndex, key.subscription), _)) =>
             Successful
           case XBeeMessage(key.xbee, ServiceSubscriptionUnknown((key.serviceIndex, key.subscription), _)) =>
@@ -483,7 +491,9 @@ trait PassadiXBee extends Passadi with StateServer with Log {
     }
 
     protected def run: Boolean @process = receive {
-      case Terminate => false
+      case Terminate =>
+        log.trace("Termination request for SubscriptionManager {}", key)
+        false
       case XBeeMessage(key.xbee, ServicePublish((key.serviceIndex, key.subscription, data), _)) =>
         internalPublish(key, data)
         run

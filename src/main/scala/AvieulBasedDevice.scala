@@ -60,4 +60,53 @@ trait AvieulBasedDevice extends GidaivelAgent {
       doResync
   }
   protected def doResync: Unit @process = noop
+
+
+  protected type Unsubscribe = () => Unit @process
+
+  /** functions relating to the device */
+  protected object device {
+    def id = avieulService.id
+    def call(callType: Short, data: Seq[Byte]=Nil, retries: Int=3): Unit @process = {
+      val error = avieulService.call(callType, data).map(_.fold(_ => None, e => Some(e.toString))).or {
+        case Timeout => Some("Timeout")
+      }.receiveWithin(timeout)
+      error match {
+        case Some(error) =>
+          log.trace("Could not call {} on avieul {}: {}. {} retries left.", callType, avieulService.id, error, retries)
+          if (retries == 0) {
+            noop
+            throw new AvieulCommunicationException(avieulService, "Error calling "+callType+": "+error)
+          } else call(callType, data, retries-1)
+        case None => noop
+      }
+    }
+    def request(requestType: Short, data: Seq[Byte]=Nil, retries: Int=3): Seq[Byte] @process = {
+      val r = avieulService.request(requestType, data).map(_.fold(r => Left(r), e => Right(e.toString))).or {
+        case Timeout => Right("Timeout")
+      }.receiveWithin(timeout)
+      r match {
+        case Left(result) =>
+          noop
+          result
+        case Right(error) => 
+          log.trace("Could not request {} on avieul {}: {}. {} retries left.", requestType, avieulService.id, error, retries)
+          if (retries == 0) {
+            noop
+            throw new AvieulCommunicationException(avieulService, "Error requesting "+requestType+": "+error)
+          } else request(requestType, data, retries-1)
+      }
+    }
+    def subscribe(subscription: Short, fun: Seq[Byte] => Unit @process) = {
+      avieulService.subscribe(subscription, fun).or {
+        case Timeout =>
+          noop
+          log.trace("Could not subscribe to {} on avieul {}", subscription, avieulService.id)
+          throw new AvieulCommunicationException(avieulService, "Error subscribing to "+subscription)
+      }.receive
+    }
+  }
 }
+
+case class AvieulCommunicationException(avieulService: AvieulService, message: String)
+     extends RuntimeException("Could not communicate with "+avieulService.id+": "+message)

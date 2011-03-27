@@ -95,7 +95,15 @@ object ServiceVersion {
 
 
 sealed trait AvieulError
-object TransmitFailed extends AvieulError
-object UnknownAvieulService extends AvieulError
-object UnknownAvieulServiceRequest extends AvieulError
-object UnknownAvieulServiceSubscription extends AvieulError
+object TransmitFailed extends AvieulError {
+  override def toString = "Transmit failed"
+}
+object UnknownAvieulService extends AvieulError {
+  override def toString = "Unknown Avieul service"
+}
+object UnknownAvieulServiceRequest extends AvieulError {
+  override def toString = "Unknown Avieul service request"
+}
+object UnknownAvieulServiceSubscription extends AvieulError {
+  override def toString = "Unknown Avieul service subscription"
+}
