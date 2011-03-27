@@ -1,6 +1,8 @@
 package ch.inventsoft
 package gidaivel
 package passadi
+package xbee
+
 
 import scala.concurrent.SyncVar
 import org.scalatest._
@@ -9,9 +11,8 @@ import scalabase.process._
 import Messages._
 import scalabase.oip._
 import scalabase.time._
-import xbee._
+import ch.inventsoft.xbee._
 import AvieulProtocol._
-
 
 
 class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {

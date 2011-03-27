@@ -8,6 +8,7 @@ import scalaxmpp._
 import scalaxmpp.component._
 import serialcommunication._
 import xbee._
+import passadi.xbee._
 import agents._
 import passadi._
 import net.liftweb.json.JsonAST._
