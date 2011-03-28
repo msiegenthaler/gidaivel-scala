@@ -42,6 +42,7 @@ protected class MessageDistributor(processes: List[(XBeeAddress, Option[Byte], P
     case ReceivedXBeeDataPacket(from, _, _, payload) =>
       payload match {
         case packet@AnnounceServices(_, _) =>
+          log.trace("Passadi distributor got announce message from {}", from)
           forwardTo(xbee(from), XBeeMessage(from, packet))
         case packet@GenericAvieulMessage((msgType, data), _) if (msgType >= 0x10 && msgType <= 0x9F && !data.isEmpty) =>
           // call, request or subscription etc. (everything relating to service)

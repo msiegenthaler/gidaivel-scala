@@ -106,6 +106,7 @@ trait AvieulBasedDevice extends GidaivelAgent {
       }.receive
     }
   }
+  override def toString = "AvieulBasedDevice("+avieulService.id+")"
 }
 
 case class AvieulCommunicationException(avieulService: AvieulService, message: String)

@@ -339,6 +339,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
 
       val avieul1 = addAvieul(xbee)
       avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
+      avieul1.addHandler(requestInfo((10,1.toByte) :: Nil))
       sleep(500 ms)
 
       val service = passadi.services.receiveWithin(1 s).head
@@ -443,6 +444,7 @@ class PassadiDAvieulsXBeeSpec extends ProcessSpec with ShouldMatchers {
     }
     override def canEqual(that: Any) = that.isInstanceOf[MockAvieul]
     override def hashCode = address.hashCode
+    override def toString = "MockAvieul"
   }
   object MockAvieul {
     def apply(): MockAvieul @process = apply(XBeeAddress64(addressSource.incrementAndGet))

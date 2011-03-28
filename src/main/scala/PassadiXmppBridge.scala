@@ -124,6 +124,8 @@ trait PassadiXmppBridge extends StateServer with Log {
 
   private[PassadiXmppBridge] def agents = get(_.agents) 
 
+  override def toString = "PassadiXmppBridge"
+
   /** Agent for the passadi */
   protected class PassadiAgent(override val services: AgentServices, val manager: AgentManager)
             extends GidaivelAgent with ComponentInfoAgent {
@@ -174,6 +176,7 @@ trait PassadiXmppBridge extends StateServer with Log {
         }
         get.resultOk(<query xmlns="http://jabber.org/protocol/disco#items">{items}</query>)
     }
+    override def toString = "PassadiAgent"
   }
 }
 
@@ -209,4 +212,5 @@ trait UnknownAvieulBasedDevice extends AvieulBasedDevice {
     val f = seqOf(Jid).parse(stored).getOrElse(Nil)
     State(f)
   }
+  override def toString = "UnknownAvieulBasedDevice("+avieulService.id+")"
 }

@@ -125,7 +125,7 @@ trait PassadiXBee extends Passadi with StateServer with Log {
 
   override def close = stopAndWait
 
-  override def toString = id.getOrElse("unknown")
+  override def toString = "PassadiXBee"
 
   protected def discardIfNoResponseSince(who: Set[XBeeAddress], t: TimePoint) = call { state =>
     val (old,na) = state.avieuls.span { e =>

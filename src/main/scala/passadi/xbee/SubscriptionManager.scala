@@ -64,17 +64,22 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
       case Failed =>
         log.trace("Could not setup {}. Retrying", key)
         receiveWithin(retryTimeout) {
-          case XBeeMessage(key.xbee, AnnounceServices(_, _)) => subscribeWithRetry
+          case XBeeMessage(key.xbee, _) =>
+            log.trace("Got message from Avieul -> retry setting up the subscription")
+            subscribeWithRetry
           case TerminationRequest(from) =>
             from ! Terminate
             log.trace("Termination request for SubscriptionManager {} while retrying", key)
             false
-          case Timeout => subscribeWithRetry
+          case Timeout =>
+            subscribeWithRetry
         }
       case UnknownSubOrService =>
-        log.trace("Could not setup {} because service or subscriptionType is unknown. Retrying..", key)
+        log.trace("Could not setup {} because service or subscriptionType is unknown. Waiting for update..", key)
         receive {
-          case XBeeMessage(key.xbee, AnnounceServices(_, _)) => subscribeWithRetry
+          case XBeeMessage(key.xbee, AnnounceServices(_, _)) =>
+            log.trace("Got announce from Avieul -> retrying setting up the subscription")
+            subscribeWithRetry
           case TerminationRequest(from) =>
             from ! Terminate
             log.trace("Termination request for SubscriptionManager {} while retrying", key)
@@ -176,4 +181,6 @@ abstract class XBeeSubscriptionManager extends SubscriptionManager with Spawnabl
   protected case class TerminationRequest(from: Process)
 
   override def handlerProcess = process
+
+  override def toString = "SubscriptionManager("+key.xbee+","+key.serviceIndex+","+key.subscription+")"
 }

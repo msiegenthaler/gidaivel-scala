@@ -16,8 +16,8 @@ import net.liftweb.json.JsonAST._
 
 object Example {
   def main(args: Array[String]): Unit = spawnAndBlock {
+    processName("ExampleApp")
     val p = self
-    println("## "+self)
     val domain = "gidaivel"
     val secret = Some("secret")
     val portName = "/dev/cu.usbserial-A6003ThW"
