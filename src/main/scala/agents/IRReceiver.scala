@@ -38,7 +38,7 @@ trait IRReceiver extends AvieulBasedDevice with Log {
     ).receive
 
     val ps = List(SonyIRProtocol) // TODO temp code
-//    loadProtocols TODO
+    loadProtocols
     State(f, ps)
   }
   override def shutdown = {
@@ -87,6 +87,8 @@ trait IRReceiver extends AvieulBasedDevice with Log {
     log.info("Unloading all protocols")
     device.call(0x0002)
   }
+
+  override def toString = "IRReceiver("+avieulService.id+")"
 }
 
 private[agents] object IRReceiverParsing {

@@ -61,8 +61,7 @@ trait PassadiXmppBridge extends StateServer with Log {
     s
   }
   private def reregisterAvieul(avieul: Avieul) = {
-    val agents = agentsForAvieul(avieul)
-    agents.foreach_cps(_.unregister)
+    // the 'old' agents will be unregistered if they already exists by the agentcomponent
     registerAvieul(avieul)
   }
   private def registerAvieul(avieul: Avieul) = {

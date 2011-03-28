@@ -7,7 +7,7 @@ import scalabase.time._
 
 /** IR Protocol used by Sony */
 object SonyIRProtocol extends SingleBitFixedLengthIRProtocol {
-  override val repeats = 3
+  override val repeats = 2
   override val bitCount = 12
   override val preample = List(0 μsec, 2450 μsec)
   override val bitZero = List(500 μsec, 650 μsec)

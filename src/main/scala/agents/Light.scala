@@ -84,4 +84,6 @@ trait OnOffLight extends AvieulBasedDevice with Log {
   }
   /* ask the device whether it's turned on or off */
   protected def device_isOn = device.request(0x0001).head == 0x01
+
+  override def toString = "Light("+avieulService.id+")"
 }
