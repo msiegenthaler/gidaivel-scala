@@ -1,29 +1,32 @@
-Infrared Receiver
------------------
+Infrared/RF Gateway
+-------------------
 Service-Type: 0x00000010
 Version: 0x00
-Description: Receives codes from infrared remote controls.
+Description: Sends and receives codes from infrared and RF remote controls.
 
 
 Calls
 -----
 * Unload a device protocol (request 0x0001)
-  Unload an IR device protocol of any type.
-  Request:
-    * device id (1 byte): if of the IR protocol (0-254)
-  Response:
-    * device id (1 byte): id of the unloaded IR-protocol
+  Unload an IR/RF device protocol of any type.
+  Body:
+    * device id (1 byte): id of the IR/RF protocol (0-254)
 
 * Reset all device protocol (request 0x0002)
-  Unload all IR device protocols (of any type).
-  Request: <empty>
-  Response: <empty>
+  Unload all IR/RF device protocols (of any type).
+  Body: <empty>
+  
+* Send an IR/RF command (request 0x0010)
+  Sends an IR/RF command. The protocol must have been loaded first.
+  Body:
+    * device id (1 byte): id of the IR/RF protocol (0-254)
+    * command (8 bytes): IR/RF-device specific command that should be sent
 
 
 Requests
 --------
 * Load single-bit fixed-length device protocol (request 0x0001)
-  Loads an IR device protocol. This load command supports IR-commands with a fixed length (in bits) and "single-bit" IR sequences.
+  Loads an IR/RF device protocol. This load command supports IR/RF-commands with a fixed length (in bits) and "single-bit" IR/RF sequences.
   Request:
     * device id (1 byte): (device local) id of the IR-device (0-254)
     * unit in us (2 bytes): units used in the rest of the message in microseconds (0-65535)
@@ -41,14 +44,14 @@ Requests
     * suffix pulse (1 byte)*: [ exactly suffix length times ]
     	pulses in units that make up the suffix
   Response:
-    * device id (1 byte): id of the loaded IR-device
+    * device id (1 byte): id of the loaded IR/RF-device
     * result (1 byte): 0x01 for ok, everything else for failed
 
 Subscription
 ------------
-* Subscribe to detected IR commands (0x0001)
-  Subscribe to all IR-commands detected by this receiver.
+* Subscribe to detected IR/RF commands (0x0001)
+  Subscribe to all IR/RF-commands detected by this receiver.
   * Data: <empty>
-  * Publish: The IR-Receiver has detected an IR command for a device that was previously loaded by a load request.
+  * Publish: The receiver has detected an IR/RF command for a device that was previously loaded by a load request.
 	  * device-id (1 byte): device id as set by "load device" command
-	  * command (8 bytes): IR-device specific command that was received over IR.
+	  * command (8 bytes): IR/RF-device specific command that was received over IR/RF.

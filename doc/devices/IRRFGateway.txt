@@ -1,0 +1,75 @@
+IRRF Gateway
+------------
+Sends and receives IR/RF commands. Used to communicate with 'legacy' devices such as TVs and stereos.
+Extends: AvieulBasedDevice
+Feature: urn:gidaivel:irrfgateway
+
+Presence:
+ * status: The loaded protocols
+IQ-Set:
+ * load protocol: Load a new protocol
+Message:
+ * send command: Send a command to ir/rf
+Outgoing Message:
+ * command received: A command was received over ir/rf
+
+
+Generic elements:
+  protocol.class = element single-bit-fixed-length {
+    attribute name { text },
+    element repeats { xsd:integer { minInclusive="1" } },
+    element bit-count { xsd:integer { minInclusive="1" } },
+    element preample-ns { xsd:long }*,
+    element bit-zero-ns { xsd:long }*,
+    element bit-one-ns { xsd:long }*,
+    element suffix-ns { xsd:long }*
+  }
+
+
+
+Presence: Status
+----------------
+Currently active protocols.
+Presence:
+  element protocols {
+    element protocol { protocol.class }*
+  }
+  
+
+Load Protocol
+-------------
+Load a new protocol.
+Type: IQ-Set
+Request:
+  element load-protocol {
+    element protocol { protocol.class }
+  }
+Response:
+  element loaded-protocol {
+    element ok { empty } |
+    element rejected { 
+      element reason { text }
+    }
+  }
+  
+  
+Command Received
+----------------
+A ir/rf command was detected. Includes the name of the protocol and the received code (a long composed of the bit values received).
+Type: Message (outgoing to all 'friends')
+Message:
+  element command-received {
+    element protocol { text },
+    element command { xsd:long }
+  }
+
+
+Send Command
+------------
+Send an ir/rf command.
+Type: Message
+Message:
+  element send-command {
+    element protocol { text },
+    element command { xsd:long }
+  }

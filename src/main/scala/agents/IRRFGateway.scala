@@ -2,6 +2,7 @@ package ch.inventsoft
 package gidaivel
 package agents
 
+import scala.xml._
 import scalabase.oip._
 import scalabase.process._
 import scalabase.binary.BytesParsing._
@@ -9,22 +10,36 @@ import scalabase.extcol.ListUtil._
 import scalabase.log._
 import scalabase.time._
 import scalaxmpp._
+import scalaxmpp.component._
 import net.liftweb.json.JsonAST._
-import Json._
 
 
 /**
- * Receiver for IR-Commands.
+ * Gateway to infrared and rf. Sends and receives rc-commands.
  */
-trait IRReceiver extends AvieulBasedDevice with Log {
+trait IRRFGateway extends AvieulBasedDevice with Log {
   protected case class State(friends: Seq[JID], protocols: Seq[IRProtocol]) {
+    def protocolIndex(name: String) = {
+      val i = protocols.indexWhere(_.name==name)
+      if (i != -1) Some(i) else None
+    }
     def withFriends(friends: Seq[JID]) = copy(friends=friends)
-    def persistent: JValue = seqOf(Jid).serialize(friends)
+    def persistent: JValue = JObject(List(
+      StateMapper.friends.serialize(friends),
+      StateMapper.protocols.serialize(protocols)
+    ))
   }
-  //TODO save the protocols to the store
+
+  private object StateMapper {
+    import Json._
+    val friends = fromObject("friends", seqOf(Jid))
+    val protocols = fromObject("protocols", seqOf(XmlElem.map(IRProtocol.fromXml _, IRProtocol.toXml _)))
+  }
 
   protected override def init(stored: JValue) = {
-    val f = seqOf(Jid).parse(stored).getOrElse(Nil)
+    val f = StateMapper.friends.parse(stored).getOrElse(Nil)
+    val p = StateMapper.protocols.parse(stored).getOrElse(Nil)
+
     log.debug("Initializing IRReceiver {}", avieul.id)
     ResourceManager[() => Unit @process](
       resource = {
@@ -37,34 +52,97 @@ trait IRReceiver extends AvieulBasedDevice with Log {
       }
     ).receive
 
-    val ps = List(SonyIRProtocol) // TODO temp code
     loadProtocols
-    State(f, ps)
+    State(f, p)
   }
   override def shutdown = {
     log.debug("Shutting down IRReceiver {}", avieul.id)
     stopAndWait.receive
   }
-
   import IRReceiverParsing._
+  protected val namespace = "urn:gidaivel:irrfgateway"
 
-  protected def handleDetected(data: Seq[Byte]) = data match {
-    case detected((index, command), Nil) =>
-      log.info("Detected an IR-Command from {}: {}", index, command)
-    case other =>
-      log.info("Received unknown: {}", byteListToHex(other))
+  protected override def message = super.message :+ sendCommand
+  protected override def iqSet = super.iqSet :+ loadProtocol
+
+  protected val sendCommand = mkMsg {
+    case (FirstElem(e @ ElemName("send-command", `namespace`)),state) =>
+      val cmd = for {
+        name <- (e \ "protocol").headOption.map(_.text)
+        Long(cmd) <- (e \ "command").headOption.map(_.text)
+        protocolId <- state.protocolIndex(name)
+      } yield {
+        command(protocolId.toByte, cmd)
+      }
+      cmd.foreach_cps { command =>
+        device.call(0x0010, command)
+      }
   }
+  object Long {
+    def unapply(string: String) = try {
+      Some(string.toLong)
+    }  catch {
+      case _: NumberFormatException => None
+    }
+  }
+
+  protected val loadProtocol = mkIqSet {
+    case (set @ FirstElem(e @ ElemName("load-protocol", `namespace`)),state) =>
+      FirstElem.firstElem(e \ "protocol").flatMap(IRProtocol.fromXml(_)) match {
+        case Some(protocol) =>
+          val id = addProtocol(protocol).receive
+          id match {
+            case Some(id) =>
+              device_loadProtocol(id.toByte, protocol)
+              set.resultOk(<ok/>)
+            case None =>
+              noop
+              set.resultError(<rejected/>)
+          }
+        case None => set.resultError(StanzaError.badRequest)
+      }
+  }
+  private def addProtocol(protocol: IRProtocol) = call { state =>
+    val oi = state.protocols.indexWhere(_.name == protocol.name)
+    val id = if (oi == -1) {
+      val l = state.protocols.length
+      if (l > 255) None else Some(l.toByte)
+    } else Some(oi.toByte)
+    val ps = id.map(i => state.protocols.updated(i, protocol)).getOrElse(state.protocols)
+    saveState //we change the state, so save it
+    (id, state.copy(protocols = ps))
+  }
+
+  protected override def status(state: State) = {
+    val status = <status>{state.protocols.length} protocols loaded</status>
+    val protocols = state.protocols.map(p => <protocol>{IRProtocol.toXml(p)}</protocol>)
+    Status(<show>chat</show> ++ status ++ <protocols xmlns={namespace}>{protocols}</protocols>)
+  }
+
+  protected def handleDetected(data: Seq[Byte]) = concurrent { state => data match {
+    case command((index, command), Nil) =>
+      log.debug("Detected an IR-Command from {}: {}", index, command)
+      state.protocols.drop(index).headOption.map(_.name).foreach_cps { name =>
+        val content = <command-received xmlns={namespace}><protocol>{name}</protocol><command>{command}</command></command-received>
+        state.friends.foreach_cps { friend =>
+          val msg = MessageSend(None, None, services.jid, friend, content)
+          services.send(msg)
+        }
+      }
+    case other =>
+      log.info("Received unknown data: {}", byteListToHex(other))
+  }}
 
   protected def loadProtocols = concurrent { state =>
     log.info("Initializing service with {} protocols", state.protocols.size)
     unloadAllProtocols
     state.protocols.foldLeft_cps(0) { (i, p) => 
-      loadProtocol(i.toByte, p)
+      device_loadProtocol(i.toByte, p)
       i + 1
     }
     noop
   }
-  protected def loadProtocol(id: Byte, protocol: IRProtocol) = protocol match {
+  protected def device_loadProtocol(id: Byte, protocol: IRProtocol) = protocol match {
     case protocol: SingleBitFixedLengthIRProtocol =>
       implicit def intToByte(int: Int) = {
         if (int > 255) throw new IllegalArgumentException("byte overflow ("+int+" is bigger then 255)")
@@ -88,12 +166,12 @@ trait IRReceiver extends AvieulBasedDevice with Log {
     device.call(0x0002)
   }
 
-  override def toString = "IRReceiver("+avieulService.id+")"
+  override def toString = "IRRFGateway("+avieulService.id+")"
 }
 
 private[agents] object IRReceiverParsing {
   /** device-id, command */
-  val detected = <<( byte, long )>>
+  val command = <<( byte, long )>>
   
   /* device id (1 byte): (device local) id of the IR-device (0-254)
    * unit in us (2 bytes): units used in the rest of the message in microseconds (0-65535)
@@ -114,28 +192,6 @@ private[agents] object IRReceiverParsing {
   val load_command_sf_lengths = <<( byte, byte, byte )>>
   val load_command_sf = <<( byte, short, byte, load_command_sf_lengths, byte, list_to_end(byte) )>>
 }
-
-
-sealed trait IRProtocol
-
-/**
- * Protocol for IR-commands with a fixed length (in bits) and "single-bit" IR sequences.
- */
-trait SingleBitFixedLengthIRProtocol extends IRProtocol {
-  /** number of times a command is repeated */
-  val repeats: Int
-  /** pulses sent before each command */
-  val preample: Seq[Duration]
-  /** number of bits per command */
-  val bitCount: Int
-  /** pulses representing a binary 1 */
-  val bitOne: Seq[Duration]
-  /** pulses representing a binary 0 */
-  val bitZero: Seq[Duration]
-  /** pulses sent after each command */
-  val suffix: Seq[Duration]
-}
-
 
 private[agents] object IRProtocolUtils {
   /**

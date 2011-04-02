@@ -6,24 +6,24 @@ import scalabase.time._
 
 
 /** IR Protocol used by Sony */
-object SonyIRProtocol extends SingleBitFixedLengthIRProtocol {
-  override val repeats = 2
-  override val bitCount = 12
-  override val preample = List(0 μsec, 2450 μsec)
-  override val bitZero = List(500 μsec, 650 μsec)
-  override val bitOne = List(500 μsec, 1250 μsec)
-  override val suffix = Nil
-  override def toString = "Sony"
-}
+object SonyIRProtocol extends SingleBitFixedLengthIRProtocol(
+  name = "sony",
+  repeats = 2,
+  bitCount = 12,
+  preample = List(0 μsec, 2450 μsec),
+  bitZero = List(500 μsec, 650 μsec),
+  bitOne = List(500 μsec, 1250 μsec),
+  suffix = Nil
+)
 
 
 /** IR Protocol used by Accuphase */
-object AccuphaseIRProtocol extends SingleBitFixedLengthIRProtocol {
-  override val repeats = 1
-  override val bitCount = 32
-  override val preample = List(0 μsec, 8500 μsec, 4250 μsec, 600 μsec)
-  override val bitZero = List(500 μsec, 600 μsec)
-  override val bitOne = List(1550 μsec, 600 μsec)
-  override val suffix = Nil
-  override def toString = "Accuphase"
-}
+object AccuphaseIRProtocol extends SingleBitFixedLengthIRProtocol(
+  name = "accuphase",
+  repeats = 1,
+  bitCount = 32,
+  preample = List(0 μsec, 8500 μsec, 4250 μsec, 600 μsec),
+  bitZero = List(500 μsec, 600 μsec),
+  bitOne = List(1550 μsec, 600 μsec),
+  suffix = Nil
+)

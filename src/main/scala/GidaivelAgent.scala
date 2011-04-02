@@ -84,7 +84,7 @@ trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer 
       val resp = handleIQ(set).receiveOption(10 s)
       sendChatXml(from, thread, resp.map(_.xml.child).getOrElse(<unknown/>))
     case (Chat(_, thread, ChatXmlCommand("message", content), from),state) =>
-      val msg = MessageSend(None, "other", from, jid, content)
+      val msg = MessageSend(None, None, from, jid, content)
       handleMessage(msg)
       sendChatXml(from, thread, <forwarded />)
     case (Chat(_, thread, ChatXmlCommand("probe", _), from),state) =>
@@ -158,6 +158,24 @@ object Json {
   trait JsonMapper[T] {
     def parse(from: JValue): Option[T]
     def serialize(value: T): JValue
+    def map[B](parseFun: T => Option[B], serializeFun: B => T) = {
+      val outer = this
+      new JsonMapper[B] {
+        override def parse(from: JValue) = outer.parse(from).flatMap(parseFun)
+        override def serialize(value: B) = outer.serialize(serializeFun(value))
+      }
+    }
+    def apply(value: T) = serialize(value)
+    def unapply(from: JValue) = parse(from)
+  }
+
+  def fromObject[T](field: String, mapper: JsonMapper[T]) = new JsonMapper[T] {
+    override def parse(from: JValue) = {
+      (for (JField(`field`, mapper(result)) <- from) yield result).headOption
+    }
+    override def serialize(value: T) = {
+      JField(field, mapper(value))
+    }
   }
 
   def seqOf[T](mapper: JsonMapper[T]): JsonMapper[Seq[T]] = new JsonMapper[Seq[T]] {
@@ -168,12 +186,26 @@ object Json {
     override def serialize(values: Seq[T]) = JArray(values map(mapper.serialize(_)) toList)
   }
 
-
   object Jid extends JsonMapper[JID] {
     override def parse(from: JValue) = from match {
       case JString(value) => JID.parseOption(value)
       case _ => None
     }
     override def serialize(value: JID) = value.stringRepresentation
+  }
+  object XmlElem extends JsonMapper[Elem] {
+    import scala.xml._
+    override def parse(from: JValue) = from match {
+      case JString(value) => try { Some(XML.loadString(value)) } catch { case e => None } 
+      case _ => None
+    }
+    override def serialize(value: Elem) = value.toString
+  }
+  object Text extends JsonMapper[String] {
+    override def parse(from: JValue) = from match {
+      case JString(value) => Some(value)
+      case _ => None
+    }
+    override def serialize(value: String) = value
   }
 }

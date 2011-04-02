@@ -28,7 +28,7 @@ trait AvieulBasedDevice extends GidaivelAgent {
   protected override def message = super.message :+ resync
 
   protected val info = mkIqGet {
-    case (get @ FirstElem(ElemName("info", namespace)),state) =>
+    case (get @ FirstElem(ElemName("info", `namespace`)),state) =>
       val st = "0x"+avieulService.serviceType.toHexString
       val sv = avieulService.version.toString
       val xml = <info xmlns={namespace}>
@@ -40,7 +40,7 @@ trait AvieulBasedDevice extends GidaivelAgent {
       get.resultOk(xml)
   }
   protected val signal = mkIqGet {
-    case (get @ FirstElem(ElemName("signal", namespace)),state) =>
+    case (get @ FirstElem(ElemName("signal", `namespace`)),state) =>
       val status = avieul.status.receiveWithin(timeout)
       status match {
         case Some(status) =>
@@ -56,7 +56,7 @@ trait AvieulBasedDevice extends GidaivelAgent {
       }
   }
   protected val resync = mkMsg {
-    case (FirstElem(ElemName("resync", namespace)),state) =>
+    case (FirstElem(ElemName("resync", `namespace`)),state) =>
       doResync
   }
   protected def doResync: Unit @process = noop

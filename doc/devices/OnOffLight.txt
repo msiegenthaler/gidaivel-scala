@@ -8,48 +8,39 @@ Presence:
  * on/off: current state of the light (on/off)
 IQ-Get: 
  * is on: Return whether the light is currently turned on or off
-Message:
- * turn on: Turn the the lamp on
- * turn off: Turn the lamp off
+IQ-Set:
+ * turn on/off: Turn the lamp on/off
 
+
+
+Generic elements:
+  default namespace = "urn:gidaivel:lights:onOff"
+  on = element on { empty } |
+  off = element off { empty }
+  
 
 
 Presence: on/off
 ----------------
 Current state of the light.
 Presence:
-  default namespace = "urn:gidaivel:lights:onOff"
-  element is-on {
-    element on { empty } |
-    element off { empty}
-  }
+  element is-on { on | off }
    
 Is On
-----
+-----
 Return whether the light is currently turned on or off.
 Type: IQ-Get
 Request:
-  default namespace = "urn:gidaivel:lights:onOff"
   element is-on { empty }
 Response:
-  default namespace = "urn:gidaivel:lights:onOff"
-  element is-on {
-    element on { empty } |
-    element off { empty}
-  }
+  element is-on { on | off }
 
-Turn On
--------
-Turn the light on
-Type: Message
-Message:
-  default namespace = "urn:gidaivel:lights:onOff"
-  element turn-on { empty }
-
-Turn Off
--------
-Turn the light off.
-Type: Message
-Message:
-  default namespace = "urn:gidaivel:lights:onOff"
-  element turn-off { empty }
+  
+Turn On/Off
+------------
+Turn the light on/off
+Type: IQ-Set
+Request:
+  element turn-onoff { on | off }
+Response
+  element ok { empty }

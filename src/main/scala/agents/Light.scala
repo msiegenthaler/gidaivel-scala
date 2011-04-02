@@ -41,23 +41,27 @@ trait OnOffLight extends AvieulBasedDevice with Log {
   }
 
   protected override def iqGet = super.iqGet :+ isOn
-  protected override def message = super.message :+ turnOnOff
+  protected override def iqSet = super.iqSet :+ turnOnOff
 
   val namespace = "urn:gidaivel:lights:onOff"
   protected override def features = super.features :+ namespace
 
   protected val isOn = mkIqGet {
-    case (get @ FirstElem(ElemName("is-on", namespace)),state) =>
+    case (get @ FirstElem(ElemName("is-on", `namespace`)),state) =>
       val res = <is-on xmlns={namespace}>{if (state.isOn) <on/> else <off/>}</is-on>
       get.resultOk(res)
   }
-  protected val turnOnOff = mkMsg {
-    case (FirstElem(ElemName("turn-on", namespace)),state) =>
-      log.debug("Turn the light on")
-      device_turnOnOff(true)
-    case (FirstElem(ElemName("turn-off", namespace)),state) =>
-      log.debug("Turn the light off")
-      device_turnOnOff(false)
+  protected val turnOnOff = mkIqSet {
+    case (set @ FirstElem(e @ ElemName("turn-onoff", `namespace`)),state) => FirstElem.firstElem(e.child) match {
+      case Some(ElemName("on", namespace)) =>
+        device_turnOnOff(true)
+        set.resultOk(<ok xmlns={namespace}/>)
+      case Some(ElemName("off", namespace)) =>
+        device_turnOnOff(false)
+        set.resultOk(<ok xmlns={namespace}/>)
+      case _ =>
+        set.resultError(StanzaError.badRequest)
+    }
   }
   private def device_turnOnOff(on: Boolean) = {
     val status: Byte = if (on) 1 else 0

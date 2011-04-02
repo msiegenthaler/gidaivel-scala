@@ -111,8 +111,8 @@ trait PassadiXmppBridge extends StateServer with Log {
             log.debug("Creating OnOffLight for {}", service.id)
             new OnOffLight with AgentBase
           case AvieulService(0x00000010, _) =>
-            log.debug("Creating IRReceiver for {}", service.id)
-            new IRReceiver with AgentBase
+            log.debug("Creating IRRFGateway for {}", service.id)
+            new IRRFGateway with AgentBase
           case _ =>
             log.debug("Creating UnknownAvieulBasedDevice for {}", service.id)
             new UnknownAvieulBasedDevice with AgentBase
@@ -162,7 +162,7 @@ trait PassadiXmppBridge extends StateServer with Log {
       Status(s)
     }
     protected val refreshAvieuls = mkMsg {
-      case (FirstElem(ElemName("refresh", namespace)),state) =>
+      case (FirstElem(ElemName("refresh", `namespace`)),state) =>
         log.debug("Refreshing the passadi")
         passadi.refresh.receive
         log.info("Passadi refreshed Avieuls")
