@@ -15,6 +15,7 @@ Outgoing Message:
 
 
 Generic elements:
+  default namespace = "urn:gidaivel:irrfgateway"
   protocol.class = element single-bit-fixed-length {
     attribute name { text },
     element repeats { xsd:integer { minInclusive="1" } },

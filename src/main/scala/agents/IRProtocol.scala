@@ -14,8 +14,7 @@ object IRProtocol {
   val xmlNamespace = "urn:gidaivel:irrfgateway"
   def toXml(protocol: IRProtocol): Elem = protocol match {
     case protocol: SingleBitFixedLengthIRProtocol =>
-      <single-bit-fixed-length xmlns={xmlNamespace}>
-        <name>{protocol.name}</name>
+      <single-bit-fixed-length xmlns={xmlNamespace} name={protocol.name}>
         <repeats>{protocol.repeats}</repeats>
         <bit-count>{protocol.bitCount}</bit-count>
         {protocol.preample.map(e => <preample-ns>{e.amountAs(Nanoseconds)}</preample-ns>)}
@@ -24,18 +23,10 @@ object IRProtocol {
         {protocol.suffix.map(e => <suffix-ns>{e.amountAs(Nanoseconds)}</suffix-ns>)}
       </single-bit-fixed-length>
   }
-  private def text(n: NodeSeq) = {
-    val t = n.text
-    if (t.isEmpty) None else Some(t)
-  }
-  private def int(n: NodeSeq) = text(n).flatMap { s =>
-    try(Some(s.toInt)) catch { case e: NumberFormatException => None }
-  }
-  private def nss(n: NodeSeq) = Some(n.flatMap(int(_).map(_ ns)))
   def fromXml(elem: Elem): Option[IRProtocol] = elem match {
     case ElemName("single-bit-fixed-length", `xmlNamespace`) =>
       for {
-        name <- text(elem \ "name")
+        name <- text(elem \ "@name")
         repeats <- int(elem \ "repeats")
         bitCount <- int(elem \ "bit-count")
         preample <- nss(elem \ "preample-ns")
@@ -45,7 +36,16 @@ object IRProtocol {
       } yield {
         SingleBitFixedLengthIRProtocol(name, repeats, preample, bitCount, bitOne, bitZero, suffix)
       }
+    case _ => None
   }
+  private def text(n: NodeSeq) = {
+    val t = n.text
+    if (t.isEmpty) None else Some(t)
+  }
+  private def int(n: NodeSeq) = text(n).flatMap { s =>
+    try(Some(s.toInt)) catch { case e: NumberFormatException => None }
+  }
+  private def nss(n: NodeSeq) = Some(n.flatMap(int(_).map(_ ns)))
 }
 
 /**

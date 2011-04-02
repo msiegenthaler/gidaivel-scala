@@ -88,27 +88,40 @@ trait IRRFGateway extends AvieulBasedDevice with Log {
 
   protected val loadProtocol = mkIqSet {
     case (set @ FirstElem(e @ ElemName("load-protocol", `namespace`)),state) =>
-      FirstElem.firstElem(e \ "protocol").flatMap(IRProtocol.fromXml(_)) match {
+      val protocols = for {
+        pe <- (e \ "protocol")
+        elem <- FirstElem.firstElem(pe.child)
+        p <- IRProtocol.fromXml(elem)
+      } yield p
+      protocols.headOption match {
         case Some(protocol) =>
+          log.debug("Loading protocol {}", protocol.name)
           val id = addProtocol(protocol).receive
           id match {
             case Some(id) =>
               device_loadProtocol(id.toByte, protocol)
+              log.info("Loaded protocol {} to id {}", protocol.name, id)
               set.resultOk(<ok/>)
             case None =>
+              log.info("Could not load the protocol {}, no more spaces available", protocol.name)
               noop
               set.resultError(<rejected/>)
           }
-        case None => set.resultError(StanzaError.badRequest)
+        case None =>
+          log.info("Could not load a protocol since it could not be parsed")
+          set.resultError(StanzaError.badRequest)
       }
   }
   private def addProtocol(protocol: IRProtocol) = call { state =>
-    val oi = state.protocols.indexWhere(_.name == protocol.name)
-    val id = if (oi == -1) {
-      val l = state.protocols.length
-      if (l > 255) None else Some(l.toByte)
-    } else Some(oi.toByte)
-    val ps = id.map(i => state.protocols.updated(i, protocol)).getOrElse(state.protocols)
+    val p0 = state.protocols
+    val oi = p0.indexWhere(_.name == protocol.name)
+    val (id,ps) = if (oi == -1) {
+      val l = p0.length
+      if (l > 255) (None, p0)
+      else (Some(l.toByte), p0 :+ protocol)
+    } else {
+      (Some(oi.toByte), p0.updated(oi, protocol))
+    }
     saveState //we change the state, so save it
     (id, state.copy(protocols = ps))
   }
@@ -121,9 +134,10 @@ trait IRRFGateway extends AvieulBasedDevice with Log {
 
   protected def handleDetected(data: Seq[Byte]) = concurrent { state => data match {
     case command((index, command), Nil) =>
-      log.debug("Detected an IR-Command from {}: {}", index, command)
+      log.trace("Detected an IR-Command from {}: {}", index, command)
       state.protocols.drop(index).headOption.map(_.name).foreach_cps { name =>
         val content = <command-received xmlns={namespace}><protocol>{name}</protocol><command>{command}</command></command-received>
+        log.debug("Received IR-Command ({}, {}), sending to {} subscribers", name, command, state.friends.size)
         state.friends.foreach_cps { friend =>
           val msg = MessageSend(None, None, services.jid, friend, content)
           services.send(msg)

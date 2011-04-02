@@ -1,0 +1,28 @@
+Passadi
+-------
+iqGet <query xmlns='http://jabber.org/protocol/disco#items'/>
+
+
+
+Light
+-----
+iqSet <turn-onoff xmlns="urn:gidaivel:lights:onOff"><on/></turn-onoff>
+iqSet <turn-onoff xmlns="urn:gidaivel:lights:onOff"><off/></turn-onoff>
+
+
+
+IRRF Gateway
+------------
+message <send-command xmlns="urn:gidaivel:irrfgateway"><protocol>sony</protocol><command>3216</command></send-command>
+
+iqset <load-protocol xmlns="urn:gidaivel:irrfgateway"><protocol>
+<single-bit-fixed-length name="sony">
+  <repeats>2</repeats>
+  <bit-count>12</bit-count>
+  <preample-ns>0</preample-ns>
+  <preample-ns>2450000</preample-ns>
+  <bit-zero-ns>500000</bit-zero-ns>
+  <bit-zero-ns>650000</bit-zero-ns>
+  <bit-one-ns>500000</bit-one-ns>
+  <bit-one-ns>1250000</bit-one-ns>
+</single-bit-fixed-length></protocol></load-protocol>
