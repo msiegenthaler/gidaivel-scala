@@ -24,8 +24,7 @@ trait AuthorizedMembership {
  *  - storage of state
  *  - management of "friends"
  */
-trait GidaivelAgent extends StatefulAgent with PresenceManager with StateServer {
-  protected val services: AgentServices
+abstract class GidaivelAgent extends StateServerAgent with PresenceManager with ProtectedAgent {
   def jid = services.jid
   def name = jid.node
 
