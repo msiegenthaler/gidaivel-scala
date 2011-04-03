@@ -18,14 +18,14 @@ import Json._
  * Light that can be switched on or off.
  * See the documententation under /docs/devices.
  */
-trait OnOffLight extends AvieulBasedDevice with Log {
-  protected case class State(friends: Seq[JID], isOn: Boolean) {
-    def withFriends(friends: Seq[JID]) = copy(friends=friends)
-    def persistent: JValue = seqOf(Jid).serialize(friends)
+abstract class OnOffLight extends AvieulBasedDevice with Log {
+  protected case class State(friends: Set[JID], isOn: Boolean) {
+    def withFriends(friends: Set[JID]) = copy(friends=friends)
+    def persistent: JValue = seqOf(Jid).serialize(friends.toSeq)
   }
 
   protected override def init(stored: JValue) = {
-    val f = seqOf(Jid).parse(stored).getOrElse(Nil)
+    val f = seqOf(Jid).parse(stored).getOrElse(Nil).toSet
     val s = device_isOn
     log.debug("The light isOn={} now", s)
     ResourceManager[Unsubscribe](

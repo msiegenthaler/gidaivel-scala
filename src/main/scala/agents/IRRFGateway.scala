@@ -17,15 +17,15 @@ import net.liftweb.json.JsonAST._
 /**
  * Gateway to infrared and rf. Sends and receives rc-commands.
  */
-trait IRRFGateway extends AvieulBasedDevice with Log {
-  protected case class State(friends: Seq[JID], protocols: Seq[IRProtocol]) {
+abstract class IRRFGateway extends AvieulBasedDevice with Log {
+  protected case class State(friends: Set[JID], protocols: Seq[IRProtocol]) {
     def protocolIndex(name: String) = {
       val i = protocols.indexWhere(_.name==name)
       if (i != -1) Some(i) else None
     }
-    def withFriends(friends: Seq[JID]) = copy(friends=friends)
+    def withFriends(friends: Set[JID]) = copy(friends=friends)
     def persistent: JValue = JObject(List(
-      StateMapper.friends.serialize(friends),
+      StateMapper.friends.serialize(friends.toSeq),
       StateMapper.protocols.serialize(protocols)
     ))
   }
@@ -37,7 +37,7 @@ trait IRRFGateway extends AvieulBasedDevice with Log {
   }
 
   protected override def init(stored: JValue) = {
-    val f = StateMapper.friends.parse(stored).getOrElse(Nil)
+    val f = StateMapper.friends.parse(stored).getOrElse(Nil).toSet
     val p = StateMapper.protocols.parse(stored).getOrElse(Nil)
 
     log.debug("Initializing IRReceiver {}", avieul.id)

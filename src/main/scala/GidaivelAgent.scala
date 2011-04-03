@@ -29,8 +29,8 @@ abstract class GidaivelAgent extends StateServerAgent with PresenceManager with 
   def name = jid.node
 
   protected override type State <: {
-    def friends: Seq[JID]
-    def withFriends(friends: Seq[JID]): State
+    def friends: Set[JID]
+    def withFriends(friends: Set[JID]): State
     def persistent: JValue
   }
 
@@ -112,14 +112,14 @@ abstract class GidaivelAgent extends StateServerAgent with PresenceManager with 
   protected override def acceptSubscription(from: JID, content: NodeSeq)(state: State) = {
     log.trace("{} is asked to accept subscription from {}", jid, from)
     if (isAllowed(from)) {
-      val f = state.friends :+ from
+      val f = state.friends + from
       saveState
       state.withFriends(f)
     } else state
   }
   protected override def removeSubscription(from: JID)(state: State) = {
     val f = state.friends.filterNot(_ == from)
-    if (f.length < state.friends.length) {
+    if (f.size < state.friends.size) {
       saveState
       state.withFriends(f)
     } else state

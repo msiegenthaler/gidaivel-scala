@@ -128,15 +128,15 @@ trait PassadiXmppBridge extends StateServer with Log {
   /** Agent for the passadi */
   protected class PassadiAgent(override val services: AgentServices, val manager: AgentManager)
             extends GidaivelAgent with ComponentInfoAgent {
-    protected case class State(friends: Seq[JID], agents: Iterable[AgentSpecification]) {
-      def withFriends(friends: Seq[JID]) = copy(friends=friends)
-      def persistent: JValue = seqOf(Jid).serialize(friends)
+    protected case class State(friends: Set[JID], agents: Iterable[AgentSpecification]) {
+      def withFriends(friends: Set[JID]) = copy(friends=friends)
+      def persistent: JValue = seqOf(Jid).serialize(friends.toSeq)
    }
 
     protected override val storage = PassadiXmppBridge.this.storage
     protected override def isAllowed(jid: JID) = authorized.isAllowed(jid)
     protected override def init(stored: JValue) = {
-      val f = seqOf(Jid).parse(stored).getOrElse(Nil)
+      val f = seqOf(Jid).parse(stored).getOrElse(Nil).toSet
       val agents = PassadiXmppBridge.this.agents.receive
       State(f, agents)
     }
@@ -201,14 +201,14 @@ object PassadiXmppBridge {
   }
 }
 
-trait UnknownAvieulBasedDevice extends AvieulBasedDevice {
-  protected case class State(friends: Seq[JID]) {
-    def withFriends(friends: Seq[JID]) = copy(friends=friends)
-    def persistent: JValue = seqOf(Jid).serialize(friends)
+abstract class UnknownAvieulBasedDevice extends AvieulBasedDevice {
+  protected case class State(friends: Set[JID]) {
+    def withFriends(friends: Set[JID]) = copy(friends=friends)
+    def persistent: JValue = seqOf(Jid).serialize(friends.toSeq)
   }
   protected type PersistentState = State
   protected override def init(stored: JValue) = {
-    val f = seqOf(Jid).parse(stored).getOrElse(Nil)
+    val f = seqOf(Jid).parse(stored).getOrElse(Nil).toSet
     State(f)
   }
   override def toString = "UnknownAvieulBasedDevice("+avieulService.id+")"
