@@ -126,6 +126,12 @@ trait IRRFGateway extends AvieulBasedDevice with Log {
     (id, state.copy(protocols = ps))
   }
 
+  protected override def doResync = concurrent { state =>
+    log.info("Resyncing status, reloading all protocols")
+    unloadAllProtocols
+    loadProtocols
+  }
+
   protected override def status(state: State) = {
     val status = <status>{state.protocols.length} protocols loaded</status>
     val protocols = state.protocols.map(p => <protocol>{IRProtocol.toXml(p)}</protocol>)
